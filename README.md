@@ -1,5 +1,7 @@
 # StreamForge
 
+[![CI](https://github.com/Arenx3/streamforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Arenx3/streamforge/actions/workflows/ci.yml)
+
 Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Los usuarios suben videos, un worker los transcodifica de forma asíncrona con FFmpeg, el progreso se monitorea en tiempo real y cada video puede compartirse mediante un enlace público con reproducción adaptativa.
 
 > **Estado:** Fase 1 — infraestructura base. Aún no hay modelos de dominio ni frontend.
@@ -113,10 +115,9 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 
 ## Flujo de trabajo
 
-- `main` siempre estable. Cada cambio entra por una rama y Pull Request.
-- Nombres de rama: `feature/<tema>`, `fix/<tema>`, `docs/<tema>`, `chore/<tema>`.
-- Commits con [Conventional Commits](https://www.conventionalcommits.org/): `feat(backend): ...`, `fix(worker): ...`, `build: ...`, `docs: ...`.
-- Antes de abrir un PR: `docker compose up --build` levanta limpio y `/api/health/` responde `ok`.
+GitHub Flow: cada cambio nace de un issue, se desarrolla en su rama y entra a `main` por Pull Request con CI en verde (squash merge). Commits con [Conventional Commits](https://www.conventionalcommits.org/).
+
+Detalles, setup de desarrollo y qué valida el CI en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
