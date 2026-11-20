@@ -1,5 +1,7 @@
 # StreamForge
 
+[![CI](https://github.com/Arenx3/streamforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Arenx3/streamforge/actions/workflows/ci.yml)
+
 Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Los usuarios suben videos, un worker los transcodifica de forma asíncrona con FFmpeg, el progreso se monitorea en tiempo real y cada video puede compartirse mediante un enlace público con reproducción adaptativa.
 
 > **Estado:** Fase 1 — infraestructura base. Aún no hay modelos de dominio ni frontend.
@@ -17,7 +19,7 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
                     └──┬────────┬──┘
               encola   │        │ boto3
                     ┌──▼───┐  ┌─▼──────────┐
-                    │Redis │  │ MinIO (S3) │
+                    │Redis │  │ RustFS (S3)│
                     └──┬───┘  └─▲──────────┘
                        │        │ sube HLS / thumbnails
                     ┌──▼────────┴──┐
@@ -33,15 +35,15 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 | `worker`     | `backend/Dockerfile.worker` | Celery con FFmpeg para transcodificación HLS              |
 | `postgres`   | `postgres:16-alpine`        | Base de datos                                             |
 | `redis`      | `redis:7-alpine`            | Broker y result backend de Celery                         |
-| `minio`      | `minio/minio`               | Almacenamiento S3 local (Cloudflare R2 en producción)     |
-| `minio-init` | `minio/mc`                  | Crea el bucket al arrancar (idempotente) y termina        |
+| `storage`    | `rustfs/rustfs`             | Almacenamiento S3 local (Cloudflare R2 en producción)     |
+| `storage-init` | `amazon/aws-cli`          | Crea el bucket al arrancar (idempotente) y termina        |
 
 ## Stack
 
 - **Backend:** Python 3.12, Django 5.1, Django REST Framework, Celery 5.4
 - **Multimedia:** FFmpeg (HLS `.m3u8` + `.ts`, thumbnails)
 - **Datos:** PostgreSQL 16, Redis 7
-- **Almacenamiento:** MinIO / Cloudflare R2 vía `boto3`
+- **Almacenamiento:** S3 vía `boto3` — RustFS en local, Cloudflare R2 en producción
 - **Frontend (próximamente):** React + TypeScript + Vite + Tailwind
 
 ## Requisitos
@@ -71,7 +73,7 @@ docker compose exec worker celery -A config call core.ping
 |-------------------------------|---------------------------|
 | http://localhost/api/health/  | Health check del stack    |
 | http://localhost/admin/       | Django admin              |
-| http://localhost:9001         | Consola de MinIO          |
+| http://localhost:9001         | Consola de RustFS (S3)    |
 
 Crear un superusuario:
 
@@ -84,7 +86,7 @@ docker compose exec backend python manage.py createsuperuser
 Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
 
 - `DJANGO_SECRET_KEY`: genera uno con `python -c "import secrets; print(secrets.token_urlsafe(50))"`.
-- `MINIO_ROOT_PASSWORD` y `AWS_SECRET_ACCESS_KEY` deben coincidir en local (mínimo 8 caracteres).
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: en local también son las credenciales del servidor RustFS (consola en el puerto `STORAGE_CONSOLE_PORT`).
 - `NGINX_PORT`: cámbialo si el puerto 80 está ocupado.
 - Para producción con R2 basta con cambiar `AWS_S3_ENDPOINT_URL` y las credenciales.
 
@@ -99,7 +101,7 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 │   ├── Dockerfile.worker  # imagen worker (Celery + FFmpeg)
 │   └── entrypoint.sh      # migrate + collectstatic
 ├── frontend/              # React + Vite (fase 3)
-├── minio/init-bucket.sh   # bootstrap del bucket
+├── storage/init-bucket.sh # bootstrap del bucket
 ├── nginx/default.conf     # reverse proxy
 └── docker-compose.yml
 ```
@@ -113,14 +115,13 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 
 ## Flujo de trabajo
 
-- `main` siempre estable. Cada cambio entra por una rama y Pull Request.
-- Nombres de rama: `feature/<tema>`, `fix/<tema>`, `docs/<tema>`, `chore/<tema>`.
-- Commits con [Conventional Commits](https://www.conventionalcommits.org/): `feat(backend): ...`, `fix(worker): ...`, `build: ...`, `docs: ...`.
-- Antes de abrir un PR: `docker compose up --build` levanta limpio y `/api/health/` responde `ok`.
+GitHub Flow: cada cambio nace de un issue, se desarrolla en su rama y entra a `main` por Pull Request con CI en verde (squash merge). Commits con [Conventional Commits](https://www.conventionalcommits.org/).
+
+Detalles, setup de desarrollo y qué valida el CI en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-- [x] **Fase 1 — Infraestructura:** Docker Compose, PostgreSQL, Redis, MinIO, Django, Celery + FFmpeg, Nginx
+- [x] **Fase 1 — Infraestructura:** Docker Compose, PostgreSQL, Redis, RustFS (S3), Django, Celery + FFmpeg, Nginx
 - [ ] **Fase 2 — Pipeline de video:** modelos, subida, transcodificación HLS multi-calidad, thumbnails, estados
 - [ ] **Fase 3 — Frontend:** dashboard, subida con progreso en vivo, reproductor HLS
 - [ ] **Fase 4 — Compartir:** enlaces públicos, tests E2E con Playwright, despliegue

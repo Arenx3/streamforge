@@ -4,7 +4,7 @@ from django.conf import settings
 
 
 def s3_client():
-    """boto3 client for MinIO (local) or Cloudflare R2 (prod), configured from env."""
+    """boto3 client for local RustFS or Cloudflare R2 (prod), configured from env."""
     return boto3.client(
         "s3",
         endpoint_url=settings.AWS_S3_ENDPOINT_URL,
