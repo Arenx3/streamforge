@@ -1,0 +1,33 @@
+name: Feature
+description: Proponer una funcionalidad o mejora
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Contexto
+      description: ¿Qué problema resuelve o qué necesidad cubre?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Qué se va a construir, a alto nivel.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceptación
+      description: Condiciones verificables para dar el issue por terminado.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notas técnicas
+      description: Decisiones, riesgos, dependencias con otros issues.
