@@ -97,6 +97,7 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 ├── backend/
 │   ├── config/            # settings, urls, celery app
 │   ├── core/              # health check, cliente S3, tareas base
+│   ├── videos/            # modelo Video y máquina de estados
 │   ├── Dockerfile         # imagen API (gunicorn)
 │   ├── Dockerfile.worker  # imagen worker (Celery + FFmpeg)
 │   └── entrypoint.sh      # migrate + collectstatic
