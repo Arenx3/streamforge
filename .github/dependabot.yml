@@ -6,9 +6,14 @@ updates:
       interval: monthly
     commit-message:
       prefix: "chore(deps)"
+    # Minor/patch bumps arrive grouped; major bumps get their own PR for review.
     groups:
-      python:
-        patterns: ["*"]
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Stay on the Django 5.2 LTS line (supported until April 2028).
+      - dependency-name: "django"
+        versions: [">=6.0"]
 
   - package-ecosystem: docker
     directory: /backend
@@ -16,6 +21,10 @@ updates:
       interval: monthly
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # Python version upgrades are planned manually, not via base-image bumps.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
