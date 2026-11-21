@@ -121,6 +121,12 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULE = {
+    "abort-abandoned-uploads": {
+        "task": "videos.abort_abandoned_uploads",
+        "schedule": 3600,
+    },
+}
 
 # Shared across gunicorn workers so rate limits hold. Uses its own Redis DB because
 # cache.clear() runs FLUSHDB, and DBs 0 and 1 hold the Celery queue and results.
