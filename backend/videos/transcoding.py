@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -44,6 +45,11 @@ INPUT_GUARDS = (
     "-format_whitelist",
     "mov,matroska,avi,mpegts,asf,flv",
 )
+
+
+_FFMPEG_CONTEXT = re.compile(r"\[(\w+) @ 0x[0-9a-fA-F]+\]\s*")
+_FILE_PATH = re.compile(r"(?:[A-Za-z]:)?(?:[\\/][\w.@%+-]+){2,}")
+_CONTROL_CHARS = re.compile(r"\x1b\[[0-9;]*m|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
 
 class TranscodeError(Exception):
@@ -250,7 +256,7 @@ def run_ffmpeg(command, *, cwd, timeout, on_progress=None):
     with (
         log_path.open("wb") as log,
         subprocess.Popen(
-            command,
+            _tied_to_parent(command),
             cwd=cwd,
             env=_sandbox_env(),
             stdin=subprocess.DEVNULL,
@@ -277,8 +283,9 @@ def run_ffmpeg(command, *, cwd, timeout, on_progress=None):
     if timed_out.is_set():
         raise TranscodeError("Processing took too long and was stopped.")
     if process.returncode != 0:
-        logger.error("FFmpeg exited with %s: %s", process.returncode, _tail(log_path))
-        raise TranscodeError("FFmpeg could not process this file.")
+        details = _tail(log_path)
+        logger.error("FFmpeg exited with %s: %s", process.returncode, details)
+        raise TranscodeError(readable_ffmpeg_error(details))
 
 
 def build_thumbnail_command(source, target, at_seconds):
@@ -331,6 +338,20 @@ def extract_thumbnail(source, target, duration):
     return False
 
 
+def readable_ffmpeg_error(log, max_length=300):
+    """Last lines of FFmpeg's log, without paths or memory addresses, safe to show users."""
+    cleaned = _CONTROL_CHARS.sub("", log)
+    cleaned = _FFMPEG_CONTEXT.sub(r"\1: ", cleaned)
+    cleaned = _FILE_PATH.sub("<file>", cleaned)
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    detail = " | ".join(lines[-3:])
+    if not detail:
+        return "FFmpeg could not process this file."
+    if len(detail) > max_length:
+        detail = "..." + detail[-max_length:]
+    return f"FFmpeg could not process this file: {detail}"
+
+
 def transcode_timeout(duration):
     return min(
         settings.VIDEO_TRANSCODE_MAX_SECONDS,
@@ -361,6 +382,12 @@ def _to_float(value):
     except (TypeError, ValueError):
         return 0.0
     return number if math.isfinite(number) else 0.0
+
+
+def _tied_to_parent(command):
+    """FFmpeg dies with its worker instead of lingering as an orphan."""
+    setpriv = shutil.which("setpriv")
+    return [setpriv, "--pdeathsig", "KILL", *command] if setpriv else command
 
 
 def _sandbox_env():
