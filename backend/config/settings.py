@@ -1,5 +1,7 @@
 import os
+from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -22,6 +24,8 @@ def env_list(key, default=""):
 
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
+if SECRET_KEY == "change-me":
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY: it signs sessions and API tokens.")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
@@ -35,9 +39,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "core",
     "videos",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -114,6 +120,16 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
+# Shared across gunicorn workers so rate limits hold. Uses its own Redis DB because
+# cache.clear() runs FLUSHDB, and DBs 0 and 1 hold the Celery queue and results.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_REDIS_URL", urlsplit(REDIS_URL)._replace(path="/2").geturl()),
+        "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
+    }
+}
+
 # --- S3 (RustFS local / Cloudflare R2 prod) ---
 AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
@@ -125,6 +141,24 @@ STREAMFORGE_TMP_DIR = env("STREAMFORGE_TMP_DIR", "/tmp/streamforge")
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": env("THROTTLE_RATE_LOGIN", "10/minute"),
+        "auth_register": env("THROTTLE_RATE_REGISTER", "10/hour"),
+    },
+    # Reverse proxies in front of Django. Rate limits read the client IP from the
+    # entry they appended to X-Forwarded-For, so clients cannot spoof it.
+    "NUM_PROXIES": int(env("TRUSTED_PROXY_COUNT", "1")),
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 LOGGING = {
