@@ -2,6 +2,7 @@ import logging
 from contextlib import contextmanager
 
 from botocore.exceptions import BotoCoreError, ClientError
+from kombu.exceptions import OperationalError as BrokerError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 
 from videos.models import InvalidTransition, Video
 from videos.serializers import VideoCreateSerializer, VideoSerializer
+from videos.tasks import transcode_video
 from videos.uploads import UploadIncomplete, finish_upload, start_upload
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,12 @@ class StorageUnavailable(APIException):
     default_code = "storage_unavailable"
 
 
+class ProcessingUnavailable(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Processing could not be started. Try again."
+    default_code = "processing_unavailable"
+
+
 @contextmanager
 def storage_errors_as_503():
     try:
@@ -33,6 +41,14 @@ def storage_errors_as_503():
     except (BotoCoreError, ClientError) as exc:
         logger.exception("S3 request failed")
         raise StorageUnavailable from exc
+
+
+def enqueue_transcode(video):
+    try:
+        transcode_video.delay(str(video.id))
+    except BrokerError as exc:
+        logger.exception("Could not enqueue processing of video %s", video.pk)
+        raise ProcessingUnavailable from exc
 
 
 class VideoViewSet(viewsets.GenericViewSet):
@@ -65,4 +81,7 @@ class VideoViewSet(viewsets.GenericViewSet):
                 video.refresh_from_db()
         if video.status == Video.Status.FAILED:
             raise UploadConflict("This upload failed or was abandoned.")
+        # Also on retries: the task ignores duplicates, and a failed enqueue recovers.
+        if video.status == Video.Status.UPLOADED:
+            enqueue_transcode(video)
         return Response(VideoSerializer(video).data)
