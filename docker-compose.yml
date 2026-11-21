@@ -85,6 +85,8 @@ services:
 
   worker:
     <<: *backend-env
+    # Reaps FFmpeg processes orphaned when a pool process dies.
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile.worker

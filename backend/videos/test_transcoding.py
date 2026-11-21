@@ -365,6 +365,7 @@ class TaskTestCase(TestCase):
         tmp_setting.enable()
         self.addCleanup(tmp_setting.disable)
         self.s3 = self.patch("videos.tasks.s3_client").return_value
+        self.patch("core.storage.time")  # Retries must not really wait.
         # A real close would break the transaction that wraps each test.
         self.patch("videos.tasks.close_old_connections")
 
@@ -423,7 +424,7 @@ class TranscodeTaskTests(TaskTestCase):
 
         bucket, key, target = self.s3.download_file.call_args.args
         self.assertEqual(key, "videos/demo/source")
-        self.assertEqual(Path(target), self.workdir(video) / "source")
+        self.assertEqual(Path(target), self.workdir(video) / "1" / "source")
         self.assertTrue(bucket)
 
     def test_uploads_every_file_with_the_master_last(self):

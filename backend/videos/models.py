@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -44,6 +45,7 @@ class Video(models.Model):
     # Celery task running this video; a redelivered message keeps the same id.
     processing_task_id = models.CharField(max_length=255, blank=True)
     processing_attempts = models.PositiveSmallIntegerField(default=0)
+    heartbeat_at = models.DateTimeField(null=True, blank=True)
 
     # Object keys in the S3 bucket.
     source_key = models.CharField(max_length=512, blank=True)
@@ -88,7 +90,14 @@ class Video(models.Model):
             error_message="",
             processing_task_id=task_id,
             processing_attempts=1,
+            heartbeat_at=timezone.now(),
         )
+
+    def has_live_run(self):
+        if self.heartbeat_at is None:
+            return False
+        age = timezone.now() - self.heartbeat_at
+        return age < timedelta(seconds=settings.VIDEO_STUCK_AFTER_SECONDS)
 
     def claim_for_processing(self, task_id):
         """Return True if `task_id` should run the pipeline for this video."""
@@ -98,12 +107,16 @@ class Video(models.Model):
                 return True
             if self.status != self.Status.PROCESSING or self.processing_task_id != task_id:
                 return False
-            # Same task delivered again: the worker died mid-run.
+            # Same task delivered again. If its run still beats, this is a duplicate.
+            if self.has_live_run():
+                return False
             if self.processing_attempts >= self.MAX_PROCESSING_ATTEMPTS:
                 self.mark_failed("Processing kept crashing and was stopped.")
                 return False
             self._save_if_status_unchanged(
-                progress=0, processing_attempts=self.processing_attempts + 1
+                progress=0,
+                processing_attempts=self.processing_attempts + 1,
+                heartbeat_at=timezone.now(),
             )
             return True
         except InvalidTransition:
@@ -139,7 +152,7 @@ class Video(models.Model):
         self._save_if_status_unchanged(status=target, **changes)
 
     def _save_if_status_unchanged(self, **changes):
-        """Write `changes` only if the row still has the status this instance holds.
+        """Write `changes` only if the row still has this instance's status and attempt.
 
         The API and the workers can act on the same video at once (for example a
         redelivered Celery task). The conditional UPDATE makes the stale caller fail
@@ -148,7 +161,9 @@ class Video(models.Model):
         if self._state.adding:
             raise ValueError("Save the video before changing its status")
         changes["updated_at"] = timezone.now()
-        updated = Video.objects.filter(pk=self.pk, status=self.status).update(**changes)
+        updated = Video.objects.filter(
+            pk=self.pk, status=self.status, processing_attempts=self.processing_attempts
+        ).update(**changes)
         if not updated:
             raise InvalidTransition(f"Video {self.pk} is no longer {self.status}")
         for field, value in changes.items():
