@@ -38,6 +38,10 @@ def s3_public_client():
     return s3_client(endpoint_url=settings.AWS_S3_PUBLIC_ENDPOINT_URL)
 
 
+class PartialDeleteError(Boto3Error):
+    """Storage refused to delete some objects."""
+
+
 def is_transient(error):
     """A 4xx answer (missing object, bad credentials) will not fix itself on retry."""
     current = error
@@ -69,4 +73,4 @@ def delete_prefix(s3, bucket, prefix):
             continue
         response = s3.delete_objects(Bucket=bucket, Delete={"Objects": objects, "Quiet": True})
         if response.get("Errors"):
-            logger.warning("Could not delete %s objects in %s", len(response["Errors"]), prefix)
+            raise PartialDeleteError(f"{len(response['Errors'])} objects remain in {prefix}")
