@@ -118,6 +118,13 @@ Al completar la subida, el worker convierte el original a HLS:
 - **Progreso:** `GET /api/videos/{id}/status/` devuelve `status`, `progress` (0 a 100) y `error_message`. El avance en vivo vive en Redis y PostgreSQL solo se actualiza cada 5 %.
 - **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
 
+## Manejo de fallos
+
+- **Archivo inválido o error de FFmpeg:** el video queda `FAILED` con un mensaje legible y el worker sigue con la cola.
+- **Errores temporales de S3:** cada operación se reintenta hasta 3 veces con espera exponencial.
+- **Limpieza:** nunca quedan temporales en `/tmp/streamforge`. Si un video falla se borran sus archivos HLS parciales y se conserva el original.
+- **Caída del worker:** cada ejecución envía un latido. Si deja de latir por `VIDEO_STUCK_AFTER_SECONDS` (3 min), `beat` la reinicia; tras 3 intentos el video queda `FAILED`.
+
 ## Variables de entorno
 
 Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
