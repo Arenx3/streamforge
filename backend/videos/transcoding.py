@@ -6,6 +6,7 @@ import math
 import os
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -153,6 +154,9 @@ def build_ffmpeg_command(source, media, renditions):
         "-hide_banner",
         "-loglevel",
         "error",
+        "-nostats",
+        "-progress",
+        "pipe:1",
         "-y",
         *INPUT_GUARDS,
         "-i",
@@ -222,23 +226,58 @@ def build_ffmpeg_command(source, media, renditions):
     return command
 
 
-def run_ffmpeg(command, *, cwd, timeout):
+def parse_progress(lines):
+    """Yield encoded seconds from FFmpeg's `-progress` key=value stream."""
+    for line in lines:
+        key, _, value = line.strip().partition("=")
+        if key != "out_time_us":
+            continue
+        try:
+            yield max(int(value), 0) / 1_000_000
+        except ValueError:
+            continue  # FFmpeg prints N/A until the first packet is written.
+
+
+def run_ffmpeg(command, *, cwd, timeout, on_progress=None):
+    """Run FFmpeg, passing encoded seconds to `on_progress`. A callback error stops it."""
     log_path = cwd.parent / "ffmpeg.log"
-    try:
-        with log_path.open("wb") as log:
-            result = subprocess.run(
-                command,
-                cwd=cwd,
-                env=_sandbox_env(),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=log,
-                timeout=timeout,
-            )
-    except subprocess.TimeoutExpired as exc:
-        raise TranscodeError("Processing took too long and was stopped.") from exc
-    if result.returncode != 0:
-        logger.error("FFmpeg exited with %s: %s", result.returncode, _tail(log_path))
+    timed_out = threading.Event()
+
+    def kill_on_timeout():
+        timed_out.set()
+        process.kill()
+
+    with (
+        log_path.open("wb") as log,
+        subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=_sandbox_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if on_progress else subprocess.DEVNULL,
+            stderr=log,
+            text=True,
+            errors="replace",
+        ) as process,
+    ):
+        watchdog = threading.Timer(timeout, kill_on_timeout)
+        watchdog.daemon = True
+        watchdog.start()
+        try:
+            if on_progress:
+                for seconds in parse_progress(process.stdout):
+                    on_progress(seconds)
+            process.wait()
+        except BaseException:
+            process.kill()
+            raise
+        finally:
+            watchdog.cancel()
+
+    if timed_out.is_set():
+        raise TranscodeError("Processing took too long and was stopped.")
+    if process.returncode != 0:
+        logger.error("FFmpeg exited with %s: %s", process.returncode, _tail(log_path))
         raise TranscodeError("FFmpeg could not process this file.")
 
 
