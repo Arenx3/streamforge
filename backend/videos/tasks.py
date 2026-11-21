@@ -3,6 +3,7 @@ import shutil
 from datetime import timedelta
 from pathlib import Path
 
+from boto3.exceptions import Boto3Error
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
 from django.conf import settings
@@ -14,9 +15,11 @@ from core.storage import s3_client
 from videos.models import InvalidTransition, Video
 from videos.transcoding import (
     MASTER_PLAYLIST,
+    THUMBNAIL_NAME,
     TranscodeError,
     build_ffmpeg_command,
     estimated_output_bytes,
+    extract_thumbnail,
     plan_renditions,
     probe,
     require_free_space,
@@ -74,7 +77,7 @@ def transcode_video(self, video_id):
         return {"video": video_id, "skipped": True}
 
     try:
-        artifacts = _build_hls(video, workdir)
+        artifacts = _build_artifacts(video, workdir)
         close_old_connections()  # FFmpeg may have outlived the database connection.
         video.mark_ready(**artifacts)
     except InvalidTransition:
@@ -88,7 +91,7 @@ def transcode_video(self, video_id):
     return {"video": video_id, "status": video.status}
 
 
-def _build_hls(video, workdir):
+def _build_artifacts(video, workdir):
     shutil.rmtree(workdir, ignore_errors=True)  # Leftovers from a crashed attempt.
     hls_dir = workdir / "hls"
     hls_dir.mkdir(parents=True)
@@ -109,8 +112,10 @@ def _build_hls(video, workdir):
 
     prefix = f"videos/{video.id}/hls"
     _upload_hls(s3, hls_dir, prefix)
+    thumbnail_key = _publish_thumbnail(s3, video, source, workdir, media.duration)
     return {
         "hls_master_key": f"{prefix}/{MASTER_PLAYLIST}",
+        "thumbnail_key": thumbnail_key,
         "duration_seconds": media.duration,
         "width": media.width,
         "height": media.height,
@@ -128,6 +133,26 @@ def _upload_hls(s3, hls_dir, prefix):
             f"{prefix}/{path.relative_to(hls_dir).as_posix()}",
             ExtraArgs={"ContentType": HLS_CONTENT_TYPES[path.suffix]},
         )
+
+
+def _publish_thumbnail(s3, video, source, workdir, duration):
+    """A missing cover must not throw away a finished transcode."""
+    target = workdir / "thumbnail" / THUMBNAIL_NAME
+    key = f"videos/{video.id}/{THUMBNAIL_NAME}"
+    try:
+        if not extract_thumbnail(source, target, duration):
+            logger.warning("No thumbnail could be extracted for video %s", video.pk)
+            return ""
+        s3.upload_file(
+            str(target),
+            settings.AWS_STORAGE_BUCKET_NAME,
+            key,
+            ExtraArgs={"ContentType": "image/webp"},
+        )
+    except (OSError, BotoCoreError, ClientError, Boto3Error):
+        logger.warning("Could not publish the thumbnail of video %s", video.pk, exc_info=True)
+        return ""
+    return key
 
 
 def _mark_failed(video, error):

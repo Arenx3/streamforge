@@ -20,6 +20,14 @@ AUDIO_KBPS = 128
 SEGMENT_SECONDS = 6
 MASTER_PLAYLIST = "master.m3u8"
 
+THUMBNAIL_NAME = "thumbnail.webp"
+THUMBNAIL_POSITION = 0.1
+THUMBNAIL_TIMEOUT = 120
+# Scales first so the frames `thumbnail` buffers to compare stay small on 4K sources.
+THUMBNAIL_FILTER = (
+    "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,thumbnail=n=30"
+)
+
 MIN_DIMENSION = 16
 MAX_DIMENSION = 8192
 PROBE_TIMEOUT = 60
@@ -232,6 +240,56 @@ def run_ffmpeg(command, *, cwd, timeout):
     if result.returncode != 0:
         logger.error("FFmpeg exited with %s: %s", result.returncode, _tail(log_path))
         raise TranscodeError("FFmpeg could not process this file.")
+
+
+def build_thumbnail_command(source, target, at_seconds):
+    return [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        *INPUT_GUARDS,
+        "-ss",
+        f"{at_seconds:.3f}",
+        "-i",
+        str(source),
+        "-map",
+        "0:V:0",  # Capital V skips embedded cover art.
+        "-map_metadata",
+        "-1",
+        "-vf",
+        THUMBNAIL_FILTER,
+        "-frames:v",
+        "1",
+        "-c:v",
+        "libwebp",
+        "-quality",
+        "80",
+        "-f",
+        "webp",
+        str(target),
+    ]
+
+
+def extract_thumbnail(source, target, duration):
+    """Write a representative frame. Returns False if the video yields none."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Seeking can land past the only frame of a very short video, so retry from the start.
+    for at_seconds in (duration * THUMBNAIL_POSITION, 0):
+        target.unlink(missing_ok=True)
+        try:
+            run_ffmpeg(
+                build_thumbnail_command(source, target, at_seconds),
+                cwd=target.parent,
+                timeout=THUMBNAIL_TIMEOUT,
+            )
+        except TranscodeError:
+            continue
+        if target.exists() and target.stat().st_size > 0:
+            return True
+    return False
 
 
 def transcode_timeout(duration):
