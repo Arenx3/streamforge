@@ -155,6 +155,12 @@ VIDEO_UPLOAD_URL_EXPIRES = int(env("VIDEO_UPLOAD_URL_EXPIRES", str(6 * 3600)))
 # Must exceed the URL lifetime so an upload in progress is never aborted.
 VIDEO_UPLOAD_ABANDON_HOURS = int(env("VIDEO_UPLOAD_ABANDON_HOURS", "24"))
 
+# --- Video processing ---
+VIDEO_MAX_DURATION_SECONDS = int(env("VIDEO_MAX_DURATION_SECONDS", str(4 * 3600)))
+VIDEO_TRANSCODE_MAX_SECONDS = int(env("VIDEO_TRANSCODE_MAX_SECONDS", str(6 * 3600)))
+# Redis redelivers unacked tasks after this long, so it must outlast the longest task.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": VIDEO_TRANSCODE_MAX_SECONDS + 7200}
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
