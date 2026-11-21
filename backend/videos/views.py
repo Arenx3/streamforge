@@ -9,6 +9,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
 from videos.models import InvalidTransition, Video
+from videos.progress import live_progress
 from videos.serializers import VideoCreateSerializer, VideoSerializer
 from videos.tasks import transcode_video
 from videos.uploads import UploadIncomplete, finish_upload, start_upload
@@ -85,3 +86,14 @@ class VideoViewSet(viewsets.GenericViewSet):
         if video.status == Video.Status.UPLOADED:
             enqueue_transcode(video)
         return Response(VideoSerializer(video).data)
+
+    @action(detail=True, methods=["get"], url_path="status", url_name="status")
+    def processing_status(self, request, pk=None):
+        video = self.get_object()
+        return Response(
+            {
+                "status": video.status,
+                "progress": live_progress(video),
+                "error_message": video.error_message,
+            }
+        )
