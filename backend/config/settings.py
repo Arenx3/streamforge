@@ -143,6 +143,12 @@ AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", "us-east-1")
 
 STREAMFORGE_TMP_DIR = env("STREAMFORGE_TMP_DIR", "/tmp/streamforge")
 
+# --- Video uploads ---
+VIDEO_UPLOAD_MAX_BYTES = int(env("VIDEO_UPLOAD_MAX_BYTES", str(5 * 1024**3)))
+VIDEO_UPLOAD_URL_EXPIRES = int(env("VIDEO_UPLOAD_URL_EXPIRES", str(6 * 3600)))
+# Must exceed the URL lifetime so an upload in progress is never aborted.
+VIDEO_UPLOAD_ABANDON_HOURS = int(env("VIDEO_UPLOAD_ABANDON_HOURS", "24"))
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
