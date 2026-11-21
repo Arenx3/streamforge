@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from core.storage import s3_client
 from videos.models import InvalidTransition, Video
+from videos.progress import ProgressReporter
 from videos.transcoding import (
     MASTER_PLAYLIST,
     THUMBNAIL_NAME,
@@ -76,8 +77,9 @@ def transcode_video(self, video_id):
             shutil.rmtree(workdir, ignore_errors=True)
         return {"video": video_id, "skipped": True}
 
+    reporter = ProgressReporter(video)
     try:
-        artifacts = _build_artifacts(video, workdir)
+        artifacts = _build_artifacts(video, workdir, reporter)
         close_old_connections()  # FFmpeg may have outlived the database connection.
         video.mark_ready(**artifacts)
     except InvalidTransition:
@@ -87,11 +89,12 @@ def transcode_video(self, video_id):
         close_old_connections()
         _mark_failed(video, exc)
     finally:
+        reporter.finish()
         shutil.rmtree(workdir, ignore_errors=True)
     return {"video": video_id, "status": video.status}
 
 
-def _build_artifacts(video, workdir):
+def _build_artifacts(video, workdir, reporter):
     shutil.rmtree(workdir, ignore_errors=True)  # Leftovers from a crashed attempt.
     hls_dir = workdir / "hls"
     hls_dir.mkdir(parents=True)
@@ -100,6 +103,7 @@ def _build_artifacts(video, workdir):
     s3 = s3_client()
     source = workdir / "source"
     s3.download_file(settings.AWS_STORAGE_BUCKET_NAME, video.source_key, str(source))
+    reporter.downloaded()
 
     media = probe(source)
     renditions = plan_renditions(media.width, media.height)
@@ -108,10 +112,11 @@ def _build_artifacts(video, workdir):
         build_ffmpeg_command(source, media, renditions),
         cwd=hls_dir,
         timeout=transcode_timeout(media.duration),
+        on_progress=lambda seconds: reporter.transcoded(seconds, media.duration),
     )
 
     prefix = f"videos/{video.id}/hls"
-    _upload_hls(s3, hls_dir, prefix)
+    _upload_hls(s3, hls_dir, prefix, reporter)
     thumbnail_key = _publish_thumbnail(s3, video, source, workdir, media.duration)
     return {
         "hls_master_key": f"{prefix}/{MASTER_PLAYLIST}",
@@ -122,17 +127,18 @@ def _build_artifacts(video, workdir):
     }
 
 
-def _upload_hls(s3, hls_dir, prefix):
+def _upload_hls(s3, hls_dir, prefix, reporter):
     files = [path for path in hls_dir.rglob("*") if path.suffix in HLS_CONTENT_TYPES]
     # Segments first and the master last, so no playlist ever points at a missing file.
     files.sort(key=lambda p: (p.suffix == ".m3u8", p.name == MASTER_PLAYLIST, p.as_posix()))
-    for path in files:
+    for done, path in enumerate(files, start=1):
         s3.upload_file(
             str(path),
             settings.AWS_STORAGE_BUCKET_NAME,
             f"{prefix}/{path.relative_to(hls_dir).as_posix()}",
             ExtraArgs={"ContentType": HLS_CONTENT_TYPES[path.suffix]},
         )
+        reporter.uploaded(done, len(files))
 
 
 def _publish_thumbnail(s3, video, source, workdir, duration):
