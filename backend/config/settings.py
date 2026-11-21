@@ -126,6 +126,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "videos.abort_abandoned_uploads",
         "schedule": 3600,
     },
+    "recover-stuck-videos": {
+        "task": "videos.recover_stuck_videos",
+        "schedule": 60,
+    },
 }
 
 # Shared across gunicorn workers so rate limits hold. Uses its own Redis DB because
@@ -158,6 +162,9 @@ VIDEO_UPLOAD_ABANDON_HOURS = int(env("VIDEO_UPLOAD_ABANDON_HOURS", "24"))
 # --- Video processing ---
 VIDEO_MAX_DURATION_SECONDS = int(env("VIDEO_MAX_DURATION_SECONDS", str(4 * 3600)))
 VIDEO_TRANSCODE_MAX_SECONDS = int(env("VIDEO_TRANSCODE_MAX_SECONDS", str(6 * 3600)))
+# A run without a heartbeat for this long is considered dead and gets restarted.
+# Never below three missed heartbeats (30 s each), or live runs would look dead.
+VIDEO_STUCK_AFTER_SECONDS = max(int(env("VIDEO_STUCK_AFTER_SECONDS", "180")), 90)
 # Redis redelivers unacked tasks after this long, so it must outlast the longest task.
 CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": VIDEO_TRANSCODE_MAX_SECONDS + 7200}
 
