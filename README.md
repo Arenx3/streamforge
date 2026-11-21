@@ -113,6 +113,7 @@ Al completar la subida, el worker convierte el original a HLS:
 - **Calidades:** 360p, 720p y 1080p, sin escalar por encima del original. Si el original mide entre dos escalones, su tamaño real se agrega como calidad máxima (un 480p genera 360p y 480p).
 - **Formato:** H.264 + AAC en segmentos de 6 s, con keyframes alineados para cambiar de calidad sin cortes.
 - **Salida en S3:** `videos/<id>/hls/master.m3u8` y una carpeta por calidad.
+- **Thumbnail:** un frame representativo cerca del 10 % del video, en WebP de hasta 1280 px, en `videos/<id>/thumbnail.webp`. Si no se puede generar, el video queda listo igual.
 - **Seguridad:** solo se aceptan contenedores de video reales. FFmpeg no puede leer archivos locales ni la red aunque el archivo lo intente, y se eliminan los metadatos del original (como la ubicación GPS).
 - **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
 
