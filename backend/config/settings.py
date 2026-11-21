@@ -121,6 +121,12 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULE = {
+    "abort-abandoned-uploads": {
+        "task": "videos.abort_abandoned_uploads",
+        "schedule": 3600,
+    },
+}
 
 # Shared across gunicorn workers so rate limits hold. Uses its own Redis DB because
 # cache.clear() runs FLUSHDB, and DBs 0 and 1 hold the Celery queue and results.
@@ -134,12 +140,20 @@ CACHES = {
 
 # --- S3 (RustFS local / Cloudflare R2 prod) ---
 AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
+# Host browsers use for presigned URLs; differs from the internal one under Docker.
+AWS_S3_PUBLIC_ENDPOINT_URL = env("AWS_S3_PUBLIC_ENDPOINT_URL", AWS_S3_ENDPOINT_URL)
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", "us-east-1")
 
 STREAMFORGE_TMP_DIR = env("STREAMFORGE_TMP_DIR", "/tmp/streamforge")
+
+# --- Video uploads ---
+VIDEO_UPLOAD_MAX_BYTES = int(env("VIDEO_UPLOAD_MAX_BYTES", str(5 * 1024**3)))
+VIDEO_UPLOAD_URL_EXPIRES = int(env("VIDEO_UPLOAD_URL_EXPIRES", str(6 * 3600)))
+# Must exceed the URL lifetime so an upload in progress is never aborted.
+VIDEO_UPLOAD_ABANDON_HOURS = int(env("VIDEO_UPLOAD_ABANDON_HOURS", "24"))
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],

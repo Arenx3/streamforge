@@ -43,6 +43,7 @@ class Video(models.Model):
 
     # Object keys in the S3 bucket.
     source_key = models.CharField(max_length=512, blank=True)
+    upload_id = models.CharField(max_length=1024, blank=True)
     hls_master_key = models.CharField(max_length=512, blank=True)
     thumbnail_key = models.CharField(max_length=512, blank=True)
 
@@ -74,7 +75,7 @@ class Video(models.Model):
         return status in self.TRANSITIONS[self.status]
 
     def mark_uploaded(self, *, size_bytes=None):
-        self._transition(self.Status.UPLOADED, size_bytes=size_bytes)
+        self._transition(self.Status.UPLOADED, size_bytes=size_bytes, upload_id="")
 
     def start_processing(self):
         self._transition(self.Status.PROCESSING, progress=0, error_message="")
