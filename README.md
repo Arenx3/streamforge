@@ -115,6 +115,7 @@ Al completar la subida, el worker convierte el original a HLS:
 - **Salida en S3:** `videos/<id>/hls/master.m3u8` y una carpeta por calidad.
 - **Thumbnail:** un frame representativo cerca del 10 % del video, en WebP de hasta 1280 px, en `videos/<id>/thumbnail.webp`. Si no se puede generar, el video queda listo igual.
 - **Seguridad:** solo se aceptan contenedores de video reales. FFmpeg no puede leer archivos locales ni la red aunque el archivo lo intente, y se eliminan los metadatos del original (como la ubicación GPS).
+- **Progreso:** `GET /api/videos/{id}/status/` devuelve `status`, `progress` (0 a 100) y `error_message`. El avance en vivo vive en Redis y PostgreSQL solo se actualiza cada 5 %.
 - **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
 
 ## Variables de entorno
