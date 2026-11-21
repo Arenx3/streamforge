@@ -33,6 +33,7 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 | `nginx`      | `nginx:1.27-alpine`         | Reverse proxy, estáticos, subidas grandes sin buffering   |
 | `backend`    | `backend/Dockerfile`        | API Django REST (gunicorn). Corre migraciones al iniciar  |
 | `worker`     | `backend/Dockerfile.worker` | Celery con FFmpeg para transcodificación HLS              |
+| `beat`       | `backend/Dockerfile.worker` | Tareas periódicas (limpieza de subidas abandonadas)       |
 | `postgres`   | `postgres:16-alpine`        | Base de datos                                             |
 | `redis`      | `redis:7-alpine`            | Broker y result backend de Celery                         |
 | `storage`    | `rustfs/rustfs`             | Almacenamiento S3 local (Cloudflare R2 en producción)     |
@@ -95,6 +96,16 @@ La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
 
 Las cuentas se identifican por email, sin distinguir mayúsculas. Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
 
+## Subida de videos
+
+Los archivos van directo del navegador a S3; Django solo coordina.
+
+1. `POST /api/videos/` con `title`, `content_type` (`video/*`) y `size_bytes`. Devuelve el video y una URL prefirmada por parte.
+2. El cliente corta el archivo según `upload.parts[].size` y hace `PUT` de cada parte a su URL. El tamaño va firmado: si no coincide, S3 la rechaza.
+3. `POST /api/videos/{id}/complete/` ensambla el archivo, lo verifica y pasa el video a `UPLOADED`. Se puede reintentar sin riesgo.
+
+Las subidas sin terminar se cancelan solas después de `VIDEO_UPLOAD_ABANDON_HOURS` (tarea periódica en `beat`).
+
 ## Variables de entorno
 
 Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
@@ -103,7 +114,8 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 - `TRUSTED_PROXY_COUNT`: proxies delante de Django (1 = nginx, 2 = CDN + nginx). Si es incorrecto, el rate limit se puede evadir o termina bloqueando a todos a la vez.
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: en local también son las credenciales del servidor RustFS (consola en el puerto `STORAGE_CONSOLE_PORT`).
 - `NGINX_PORT`: cámbialo si el puerto 80 está ocupado.
-- Para producción con R2 basta con cambiar `AWS_S3_ENDPOINT_URL` y las credenciales.
+- `AWS_S3_PUBLIC_ENDPOINT_URL`: host que usa el navegador para subir. En local es `http://localhost:9000`.
+- Para producción con R2 basta con cambiar `AWS_S3_ENDPOINT_URL`, `AWS_S3_PUBLIC_ENDPOINT_URL` y las credenciales, y configurar CORS en el bucket.
 
 ## Estructura del repositorio
 
@@ -113,7 +125,7 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 │   ├── accounts/          # registro, login JWT y perfil
 │   ├── config/            # settings, urls, celery app
 │   ├── core/              # health check, cliente S3, tareas base
-│   ├── videos/            # modelo Video y máquina de estados
+│   ├── videos/            # modelo Video, estados y subida a S3
 │   ├── Dockerfile         # imagen API (gunicorn)
 │   ├── Dockerfile.worker  # imagen worker (Celery + FFmpeg)
 │   └── entrypoint.sh      # migrate + collectstatic
