@@ -72,6 +72,7 @@ docker compose exec worker celery -A config call core.ping
 | URL                           | Qué es                    |
 |-------------------------------|---------------------------|
 | http://localhost/api/health/  | Health check del stack    |
+| http://localhost/api/auth/    | Autenticación (JWT)       |
 | http://localhost/admin/       | Django admin              |
 | http://localhost:9001         | Consola de RustFS (S3)    |
 
@@ -81,11 +82,25 @@ Crear un superusuario:
 docker compose exec backend python manage.py createsuperuser
 ```
 
+## Autenticación
+
+La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
+
+| Método | Ruta                       | Qué hace                                                  |
+|--------|----------------------------|-----------------------------------------------------------|
+| POST   | `/api/auth/register/`      | Crea una cuenta (`username`, `password`, `email` opcional) |
+| POST   | `/api/auth/token/`         | Login: devuelve `access` (15 min) y `refresh` (7 días)    |
+| POST   | `/api/auth/token/refresh/` | Devuelve un par nuevo e invalida el `refresh` usado       |
+| GET    | `/api/auth/me/`            | Usuario actual (`Authorization: Bearer <access>`)         |
+
+Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
+
 ## Variables de entorno
 
 Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
 
-- `DJANGO_SECRET_KEY`: genera uno con `python -c "import secrets; print(secrets.token_urlsafe(50))"`.
+- `DJANGO_SECRET_KEY`: genera uno con `python -c "import secrets; print(secrets.token_urlsafe(50))"`. Firma los tokens JWT, así que la app no arranca con el valor `change-me`.
+- `TRUSTED_PROXY_COUNT`: proxies delante de Django (1 = nginx, 2 = CDN + nginx). Si es incorrecto, el rate limit se puede evadir o termina bloqueando a todos a la vez.
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: en local también son las credenciales del servidor RustFS (consola en el puerto `STORAGE_CONSOLE_PORT`).
 - `NGINX_PORT`: cámbialo si el puerto 80 está ocupado.
 - Para producción con R2 basta con cambiar `AWS_S3_ENDPOINT_URL` y las credenciales.
@@ -95,6 +110,7 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 ```
 .
 ├── backend/
+│   ├── accounts/          # registro, login JWT y perfil
 │   ├── config/            # settings, urls, celery app
 │   ├── core/              # health check, cliente S3, tareas base
 │   ├── videos/            # modelo Video y máquina de estados
