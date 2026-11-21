@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     "corsheaders",
     "core",
     "videos",
@@ -162,6 +164,8 @@ VIDEO_UPLOAD_ABANDON_HOURS = int(env("VIDEO_UPLOAD_ABANDON_HOURS", "24"))
 # --- Video processing ---
 VIDEO_MAX_DURATION_SECONDS = int(env("VIDEO_MAX_DURATION_SECONDS", str(4 * 3600)))
 VIDEO_TRANSCODE_MAX_SECONDS = int(env("VIDEO_TRANSCODE_MAX_SECONDS", str(6 * 3600)))
+# Lifetime of playback links; must outlast the longest video being watched.
+VIDEO_PLAYBACK_URL_EXPIRES = int(env("VIDEO_PLAYBACK_URL_EXPIRES", str(6 * 3600)))
 # A run without a heartbeat for this long is considered dead and gets restarted.
 # Never below three missed heartbeats (30 s each), or live runs would look dead.
 VIDEO_STUCK_AFTER_SECONDS = max(int(env("VIDEO_STUCK_AFTER_SECONDS", "180")), 90)
@@ -174,6 +178,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_RATES": {
         "auth_login": env("THROTTLE_RATE_LOGIN", "10/minute"),
         "auth_register": env("THROTTLE_RATE_REGISTER", "10/hour"),
@@ -181,6 +186,20 @@ REST_FRAMEWORK = {
     # Reverse proxies in front of Django. Rate limits read the client IP from the
     # entry they appended to X-Forwarded-For, so clients cannot spoof it.
     "NUM_PROXIES": int(env("TRUSTED_PROXY_COUNT", "1")),
+}
+
+API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", True)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "StreamForge API",
+    "DESCRIPTION": "Video upload, HLS processing and private playback.",
+    "VERSION": "0.2.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SERVE_AUTHENTICATION": [],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
 }
 
 SIMPLE_JWT = {

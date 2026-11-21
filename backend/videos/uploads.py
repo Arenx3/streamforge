@@ -58,16 +58,22 @@ def finish_upload(video):
     video.mark_uploaded(size_bytes=size)
 
 
+def abort_multipart(s3, key, upload_id):
+    try:
+        s3.abort_multipart_upload(
+            Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=key, UploadId=upload_id
+        )
+    except ClientError as error:
+        if _error_code(error) != "NoSuchUpload":
+            raise
+
+
 def discard_upload(video):
     """Free everything a failed upload left in storage."""
     if not video.upload_id:
         return
     s3 = s3_client()
-    try:
-        s3.abort_multipart_upload(**_location(video), UploadId=video.upload_id)
-    except ClientError as error:
-        if _error_code(error) != "NoSuchUpload":
-            raise
+    abort_multipart(s3, video.source_key, video.upload_id)
     s3.delete_object(**_location(video))
     Video.objects.filter(pk=video.pk).update(upload_id="")
 

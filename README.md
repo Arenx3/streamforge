@@ -118,6 +118,22 @@ Al completar la subida, el worker convierte el original a HLS:
 - **Progreso:** `GET /api/videos/{id}/status/` devuelve `status`, `progress` (0 a 100) y `error_message`. El avance en vivo vive en Redis y PostgreSQL solo se actualiza cada 5 %.
 - **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
 
+## API de videos
+
+Documentación interactiva en http://localhost/api/docs/ (se desactiva con `API_DOCS_ENABLED=False`).
+
+| Método | Ruta                          | Qué hace                                               |
+|--------|-------------------------------|--------------------------------------------------------|
+| GET    | `/api/videos/`                | Lista tus videos, paginada, con filtro `?status=`      |
+| POST   | `/api/videos/`                | Inicia una subida                                      |
+| GET    | `/api/videos/{id}/`           | Metadatos, thumbnail y URL de reproducción             |
+| PATCH  | `/api/videos/{id}/`           | Edita título o descripción                             |
+| DELETE | `/api/videos/{id}/`           | Borra el video y todos sus archivos                    |
+| POST   | `/api/videos/{id}/complete/`  | Termina la subida y empieza el procesamiento           |
+| GET    | `/api/videos/{id}/status/`    | Estado y progreso en vivo                              |
+
+**Reproducción privada:** `playback_url` lleva un token firmado que vence a las 6 horas (`VIDEO_PLAYBACK_URL_EXPIRES`) y sirve para un solo video. El bucket nunca es público: cada segmento se entrega con su propia URL prefirmada.
+
 ## Manejo de fallos
 
 - **Archivo inválido o error de FFmpeg:** el video queda `FAILED` con un mensaje legible y el worker sigue con la cola.

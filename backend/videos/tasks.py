@@ -31,7 +31,7 @@ from videos.transcoding import (
     run_ffmpeg,
     transcode_timeout,
 )
-from videos.uploads import discard_upload
+from videos.uploads import abort_multipart, discard_upload
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,23 @@ def transcode_video(self, video_id):
         reporter.finish()
         _remove_workdir(workdir)
     return {"video": video_id, "status": video.status}
+
+
+@shared_task(
+    name="videos.delete_video_files",
+    autoretry_for=STORAGE_ERRORS,
+    retry_backoff=30,
+    retry_backoff_max=3600,
+    retry_jitter=True,
+    max_retries=8,
+)
+def delete_video_files(video_id, upload_id=""):
+    """Remove everything a deleted video had in storage."""
+    prefix = f"videos/{uuid.UUID(video_id)}/"  # A strict id keeps the prefix to this video.
+    s3 = s3_client()
+    if upload_id:
+        abort_multipart(s3, f"{prefix}source", upload_id)
+    delete_prefix(s3, settings.AWS_STORAGE_BUCKET_NAME, prefix)
 
 
 @shared_task(name="videos.recover_stuck_videos")
