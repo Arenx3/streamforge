@@ -145,6 +145,8 @@ jobs:
           cover = s3_client().head_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=video.thumbnail_key)
           assert cover['ContentType'] == 'image/webp' and cover['ContentLength'] > 0
           "
+          curl -fsS "http://localhost/api/videos/$VIDEO_ID/status/" \
+            -H "Authorization: Bearer $ACCESS" | jq -e '.status == "READY" and .progress == 100'
       - name: Gateway survives a backend IP change
         run: |
           backend_ip() {
