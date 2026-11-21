@@ -4,7 +4,13 @@ from boto3.exceptions import S3UploadFailedError
 from botocore.exceptions import ClientError, EndpointConnectionError
 from django.test import SimpleTestCase
 
-from core.storage import S3_RETRIES, delete_prefix, is_transient, with_retries
+from core.storage import (
+    S3_RETRIES,
+    PartialDeleteError,
+    delete_prefix,
+    is_transient,
+    with_retries,
+)
 
 STORAGE_DOWN = EndpointConnectionError(endpoint_url="http://storage:9000")
 
@@ -148,9 +154,9 @@ class DeletePrefixTests(SimpleTestCase):
 
         self.s3.delete_objects.assert_not_called()
 
-    def test_reports_objects_it_could_not_delete(self):
+    def test_raises_if_some_objects_remain(self):
         self.stub_pages(["a/1"])
         self.s3.delete_objects.return_value = {"Errors": [{"Key": "a/1", "Code": "InternalError"}]}
 
-        with self.assertLogs("core.storage", level="WARNING"):
+        with self.assertRaises(PartialDeleteError):
             delete_prefix(self.s3, "bucket", "a/")

@@ -42,6 +42,7 @@ class SplitIntoPartsTests(SimpleTestCase):
         self.assertEqual(sum(parts), size)
 
 
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
 class UploadTestCase(APITestCase):
     create_url = reverse("video-list")
 
