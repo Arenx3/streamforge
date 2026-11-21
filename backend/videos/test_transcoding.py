@@ -8,9 +8,11 @@ from unittest import mock, skipUnless
 
 from boto3.exceptions import S3UploadFailedError
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from videos.models import Video
+from videos.progress import ProgressReporter
 from videos.tasks import transcode_video
 from videos.transcoding import (
     DISK_RESERVE_BYTES,
@@ -207,6 +209,12 @@ class FfmpegCommandTests(SimpleTestCase):
     def test_strips_source_metadata(self):
         self.assertEqual(self.option(self.command(), "-map_metadata"), "-1")
 
+    def test_reports_progress_on_stdout(self):
+        command = self.command()
+
+        self.assertEqual(self.option(command, "-progress"), "pipe:1")
+        self.assertIn("-nostats", command)
+
     def test_writes_a_vod_master_playlist(self):
         command = self.command()
 
@@ -324,7 +332,7 @@ class LimitsTests(SimpleTestCase):
                 require_free_space("/tmp", 101)
 
 
-def fake_hls(_command, *, cwd, timeout):
+def fake_hls(_command, *, cwd, timeout, on_progress=None):
     for name in (
         "master.m3u8",
         "360p/index.m3u8",
@@ -343,12 +351,14 @@ def fake_thumbnail(_source, target, _duration):
     return True
 
 
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
 class TaskTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.owner = get_user_model().objects.create_user(email="owner@example.com")
 
     def setUp(self):
+        cache.clear()
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         tmp_setting = override_settings(STREAMFORGE_TMP_DIR=str(self.tmp))
@@ -596,7 +606,7 @@ class TranscodeTaskTests(TaskTestCase):
     def test_state_change_during_processing_is_respected(self):
         video = self.make_video()
 
-        def another_actor_fails_it(_command, *, cwd, timeout):
+        def another_actor_fails_it(_command, *, cwd, timeout, on_progress=None):
             fake_hls(_command, cwd=cwd, timeout=timeout)
             Video.objects.filter(pk=video.pk).update(status=Status.FAILED)
 
@@ -781,6 +791,23 @@ class RealFfmpegTests(TaskTestCase):
                 self.assertEqual(video.status, Status.READY, video.error_message)
                 self.assertEqual(video.thumbnail_key, f"videos/{video.id}/thumbnail.webp")
                 self.assertEqual(image_info(self.published / "thumbnail.webp")[0], "webp")
+
+    def test_progress_increases_during_a_real_run(self):
+        seen = []
+        original = ProgressReporter.transcoded
+
+        def record(reporter, seconds, duration):
+            seen.append(seconds)
+            original(reporter, seconds, duration)
+
+        with mock.patch.object(ProgressReporter, "transcoded", record):
+            video = self.transcode(self.sample)
+
+        self.assertEqual(video.status, Status.READY, video.error_message)
+        self.assertEqual(video.progress, 100)
+        self.assertTrue(seen)
+        self.assertEqual(seen, sorted(seen))
+        self.assertGreater(seen[-1], video.duration_seconds * 0.8)
 
     def test_rejects_playlists_that_could_read_local_files(self):
         attacks = {
