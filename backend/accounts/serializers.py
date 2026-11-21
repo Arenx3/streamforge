@@ -3,34 +3,40 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 User = get_user_model()
-DUPLICATE_USERNAME = User._meta.get_field("username").error_messages["unique"]
+DUPLICATE_EMAIL = User._meta.get_field("email").error_messages["unique"]
+
+
+class NormalizedEmailField(serializers.EmailField):
+    """Normalizes first, so length and uniqueness checks apply to the stored value."""
+
+    def to_internal_value(self, data):
+        return User.objects.normalize_email(super().to_internal_value(data))
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "email", "date_joined"]
+        fields = ["id", "email", "date_joined"]
         read_only_fields = fields
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    email = NormalizedEmailField(
+        max_length=User._meta.get_field("email").max_length,
+        validators=[UniqueValidator(queryset=User.objects.all(), message=DUPLICATE_EMAIL)],
+    )
     password = serializers.CharField(write_only=True, max_length=128, trim_whitespace=False)
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "password", "date_joined"]
+        fields = ["id", "email", "password", "date_joined"]
         read_only_fields = ["id", "date_joined"]
 
-    def validate_username(self, value):
-        # "Alice" and "alice" must not coexist: one could impersonate the other.
-        if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError(DUPLICATE_USERNAME)
-        return value
-
     def validate(self, attrs):
-        candidate = User(username=attrs["username"], email=attrs.get("email", ""))
+        candidate = User(email=attrs["email"])
         try:
             validate_password(attrs["password"], user=candidate)
         except DjangoValidationError as exc:
@@ -42,5 +48,5 @@ class RegisterSerializer(serializers.ModelSerializer):
             with transaction.atomic():
                 return User.objects.create_user(**validated_data)
         except IntegrityError as exc:
-            # Lost a race against a concurrent signup with the same username.
-            raise serializers.ValidationError({"username": [DUPLICATE_USERNAME]}) from exc
+            # Lost a race against a concurrent signup with the same email.
+            raise serializers.ValidationError({"email": [DUPLICATE_EMAIL]}) from exc
