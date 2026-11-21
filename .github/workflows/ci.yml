@@ -147,6 +147,21 @@ jobs:
           "
           curl -fsS "http://localhost/api/videos/$VIDEO_ID/status/" \
             -H "Authorization: Bearer $ACCESS" | jq -e '.status == "READY" and .progress == 100'
+          head -c 2048 /dev/urandom > corrupt.mp4
+          BAD="$(curl -fsS -X POST http://localhost/api/videos/ \
+            -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+            -d '{"title": "Corrupt", "content_type": "video/mp4", "size_bytes": 2048}')"
+          curl -fsS -X PUT --upload-file corrupt.mp4 "$(jq -r '.upload.parts[0].url' <<< "$BAD")"
+          BAD_ID="$(jq -r .video.id <<< "$BAD")"
+          curl -fsS -X POST "http://localhost/api/videos/$BAD_ID/complete/" -H "Authorization: Bearer $ACCESS"
+          for i in $(seq 1 30); do
+            STATE="$(curl -fsS "http://localhost/api/videos/$BAD_ID/status/" \
+              -H "Authorization: Bearer $ACCESS" | jq -r .status)"
+            if [ "$STATE" = "FAILED" ]; then break; fi
+            sleep 1
+          done
+          test "$STATE" = "FAILED"
+          test "$(docker compose exec -T worker sh -c 'ls -A /tmp/streamforge | wc -l')" = "0"
       - name: Gateway survives a backend IP change
         run: |
           backend_ip() {
