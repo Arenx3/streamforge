@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from kombu.exceptions import OperationalError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -57,6 +58,9 @@ class UploadTestCase(APITestCase):
         self.public_s3 = public.start().return_value
         self.addCleanup(private.stop)
         self.addCleanup(public.stop)
+        enqueue = mock.patch("videos.views.transcode_video")
+        self.transcode = enqueue.start()
+        self.addCleanup(enqueue.stop)
         self.s3.create_multipart_upload.return_value = {"UploadId": "upload-1"}
         self.s3.head_object.return_value = {"ContentLength": SIZE}
         self.public_s3.generate_presigned_url.side_effect = lambda _operation, Params, ExpiresIn: (
@@ -187,6 +191,45 @@ class CompleteUploadTests(UploadTestCase):
         self.assertEqual(video.status, Status.UPLOADED)
         self.assertEqual(video.size_bytes, SIZE)
         self.assertEqual(video.upload_id, "")
+
+    def test_enqueues_transcoding_once_uploaded(self):
+        video = self.make_video()
+        self.stub_parts(MIN_PART_BYTES, 100)
+
+        self.complete(video)
+
+        self.transcode.delay.assert_called_once_with(str(video.id))
+
+    def test_incomplete_upload_is_not_enqueued(self):
+        video = self.make_video()
+        self.stub_parts(MIN_PART_BYTES)
+
+        self.complete(video)
+
+        self.transcode.delay.assert_not_called()
+
+    def test_broker_failure_returns_503_and_retry_enqueues(self):
+        video = self.make_video()
+        self.stub_parts(MIN_PART_BYTES, 100)
+        self.transcode.delay.side_effect = OperationalError("broker down")
+
+        with self.assertLogs("videos.views", level="ERROR"):
+            response = self.complete(video)
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        video.refresh_from_db()
+        self.assertEqual(video.status, Status.UPLOADED)
+
+        self.transcode.delay.side_effect = None
+
+        self.assertEqual(self.complete(video).status_code, status.HTTP_200_OK)
+        self.assertEqual(self.transcode.delay.call_count, 2)
+
+    def test_video_already_processing_is_not_enqueued(self):
+        video = self.make_video(video_status=Status.PROCESSING, upload_id="")
+
+        self.assertEqual(self.complete(video).status_code, status.HTTP_200_OK)
+        self.transcode.delay.assert_not_called()
 
     def test_requires_authentication(self):
         video = self.make_video()
