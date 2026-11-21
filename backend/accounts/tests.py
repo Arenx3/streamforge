@@ -1,8 +1,11 @@
+import os
 from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
+from django.db import IntegrityError
 from django.test import override_settings
 from django.urls import path, reverse
 from rest_framework import status
@@ -13,6 +16,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 User = get_user_model()
+EMAIL = "alice@example.com"
 PASSWORD = "c0rrect-horse-battery"
 
 
@@ -20,7 +24,7 @@ class PrivateView(APIView):
     """Declares no permissions, so it shows what the project default enforces."""
 
     def get(self, request):
-        return Response({"user": request.user.username})
+        return Response({"user": request.user.email})
 
 
 urlpatterns = [path("private/", PrivateView.as_view())]
@@ -39,16 +43,16 @@ class AuthTestCase(APITestCase):
     def setUp(self):
         cache.clear()
 
-    def make_user(self, username="alice", **extra):
-        return User.objects.create_user(username=username, password=PASSWORD, **extra)
+    def make_user(self, email=EMAIL, **extra):
+        return User.objects.create_user(email=email, password=PASSWORD, **extra)
 
-    def login(self, username="alice", password=PASSWORD, **extra):
+    def login(self, email=EMAIL, password=PASSWORD, **extra):
         return self.client.post(
-            self.token_url, {"username": username, "password": password}, format="json", **extra
+            self.token_url, {"email": email, "password": password}, format="json", **extra
         )
 
     def register(self, **overrides):
-        payload = {"username": "newuser", "email": "new@example.com", "password": PASSWORD}
+        payload = {"email": "new@example.com", "password": PASSWORD}
         return self.client.post(self.register_url, payload | overrides, format="json")
 
 
@@ -57,24 +61,23 @@ class RegisterTests(AuthTestCase):
         response = self.register()
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(set(response.data), {"id", "username", "email", "date_joined"})
-        user = User.objects.get(username="newuser")
+        self.assertEqual(set(response.data), {"id", "email", "date_joined"})
+        user = User.objects.get(email="new@example.com")
         self.assertTrue(user.check_password(PASSWORD))
         self.assertNotEqual(user.password, PASSWORD)
 
-    def test_email_is_optional(self):
-        response = self.client.post(
-            self.register_url, {"username": "noemail", "password": PASSWORD}, format="json"
-        )
+    def test_email_is_required(self):
+        response = self.client.post(self.register_url, {"password": PASSWORD}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
 
     def test_rejects_passwords_that_fail_django_validators(self):
         weak_passwords = {
             "too short": "x7!kQ",
             "common": "password123",
             "numeric": "8675309214",
-            "similar to username": "newuser1",
+            "similar to email": "new@example.com",
         }
         for reason, password in weak_passwords.items():
             with self.subTest(reason):
@@ -82,17 +85,29 @@ class RegisterTests(AuthTestCase):
 
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
                 self.assertIn("password", response.data)
-        self.assertFalse(User.objects.filter(username="newuser").exists())
+        self.assertFalse(User.objects.filter(email="new@example.com").exists())
 
-    def test_rejects_username_taken_in_any_case(self):
-        self.make_user("alice")
+    def test_rejects_email_taken_in_any_form(self):
+        self.make_user("kate@example.com")
 
-        for username in ("alice", "ALICE"):
-            with self.subTest(username):
-                response = self.register(username=username)
+        for email in ("kate@example.com", "KATE@Example.COM", "Kate@example.com"):
+            with self.subTest(email):
+                response = self.register(email=email)
 
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-                self.assertIn("username", response.data)
+                self.assertIn("email", response.data)
+
+    def test_stores_email_in_canonical_form(self):
+        response = self.register(email="  New.User@Example.COM ")
+
+        self.assertEqual(response.data["email"], "new.user@example.com")
+
+    def test_rejects_email_too_long_once_normalized(self):
+        # "İ" passes the email validator but doubles in length when lowercased.
+        response = self.register(email="İ" * 200 + "@example.com")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
 
     def test_rejects_invalid_email(self):
         response = self.register(email="not-an-email")
@@ -103,7 +118,7 @@ class RegisterTests(AuthTestCase):
     def test_cannot_grant_itself_privileges(self):
         self.register(is_staff=True, is_superuser=True)
 
-        user = User.objects.get(username="newuser")
+        user = User.objects.get(email="new@example.com")
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
 
@@ -126,6 +141,13 @@ class LoginTests(AuthTestCase):
         self.assertEqual(access["user_id"], str(user.id))
         self.assertEqual(access["exp"] - access["iat"], timedelta(minutes=15).total_seconds())
         self.assertIn("refresh", response.data)
+
+    def test_email_is_case_insensitive(self):
+        self.make_user()
+
+        response = self.login(email="ALICE@Example.com")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_wrong_password_is_rejected(self):
         self.make_user()
@@ -186,15 +208,14 @@ class MeTests(AuthTestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def test_returns_current_user(self):
-        user = self.make_user(email="alice@example.com")
+        user = self.make_user()
         self.authenticate(self.login().data["access"])
 
         response = self.client.get(self.me_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], user.id)
-        self.assertEqual(response.data["username"], "alice")
-        self.assertEqual(response.data["email"], "alice@example.com")
+        self.assertEqual(response.data["email"], EMAIL)
         self.assertNotIn("password", response.data)
 
     def test_requires_token(self):
@@ -222,6 +243,89 @@ class MeTests(AuthTestCase):
         self.assertEqual(self.client.get(self.me_url).status_code, status.HTTP_401_UNAUTHORIZED)
 
 
+class UserModelTests(AuthTestCase):
+    def test_email_is_required(self):
+        with self.assertRaises(ValueError):
+            User.objects.create_user(email="", password=PASSWORD)
+
+    def test_stores_canonical_email(self):
+        user = User.objects.create_user(email="  Alice@EXAMPLE.com ", password=PASSWORD)
+
+        self.assertEqual(user.email, EMAIL)
+
+    def test_has_no_username(self):
+        self.assertEqual(User.USERNAME_FIELD, "email")
+        self.assertNotIn("username", [field.name for field in User._meta.get_fields()])
+
+    def test_database_rejects_non_canonical_email(self):
+        user = self.make_user()
+
+        with self.assertRaises(IntegrityError):
+            User.objects.filter(pk=user.pk).update(email="ALICE@example.com")
+
+    def test_createsuperuser_command_uses_email(self):
+        with mock.patch.dict(os.environ, {"DJANGO_SUPERUSER_PASSWORD": PASSWORD}):
+            call_command("createsuperuser", "--noinput", "--email", "Root@Example.com", verbosity=0)
+
+        user = User.objects.get(email="root@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password(PASSWORD))
+
+
+class UserAdminTests(AuthTestCase):
+    add_url = reverse("admin:accounts_user_add")
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(
+            User.objects.create_superuser(email="root@example.com", password=PASSWORD)
+        )
+
+    def add_user(self, email):
+        data = {
+            "email": email,
+            "usable_password": "true",
+            "password1": PASSWORD,
+            "password2": PASSWORD,
+        }
+        return self.client.post(self.add_url, data)
+
+    def test_pages_load(self):
+        user = self.make_user()
+        urls = [
+            self.add_url,
+            reverse("admin:accounts_user_changelist") + "?q=alice",
+            reverse("admin:accounts_user_change", args=[user.pk]),
+        ]
+        for url in urls:
+            with self.subTest(url):
+                self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK)
+
+    def test_add_user_stores_canonical_email(self):
+        response = self.add_user("New@Example.com")
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertTrue(User.objects.filter(email="new@example.com").exists())
+
+    def test_add_user_rejects_email_taken_in_any_case(self):
+        self.make_user()
+
+        response = self.add_user("ALICE@example.com")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(User.objects.filter(email__iexact=EMAIL).count(), 1)
+
+    def test_login_with_email_in_any_case(self):
+        self.client.logout()
+
+        response = self.client.post(
+            reverse("admin:login"), {"username": "ROOT@example.com", "password": PASSWORD}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+
+
 @override_settings(ROOT_URLCONF="accounts.tests")
 class DefaultPermissionTests(AuthTestCase):
     def test_new_api_views_are_private_by_default(self):
@@ -234,7 +338,7 @@ class DefaultPermissionTests(AuthTestCase):
         response = self.client.get("/private/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, {"user": "alice"})
+        self.assertEqual(response.data, {"user": EMAIL})
 
 
 @mock.patch.dict(
@@ -253,7 +357,7 @@ class RateLimitTests(AuthTestCase):
         self.assertIn("Retry-After", blocked.headers)
 
     def test_registration_is_limited(self):
-        codes = [self.register(username=f"user{i}").status_code for i in range(3)]
+        codes = [self.register(email=f"user{i}@example.com").status_code for i in range(3)]
 
         self.assertEqual(
             codes,

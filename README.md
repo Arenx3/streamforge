@@ -88,12 +88,12 @@ La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
 
 | Método | Ruta                       | Qué hace                                                  |
 |--------|----------------------------|-----------------------------------------------------------|
-| POST   | `/api/auth/register/`      | Crea una cuenta (`username`, `password`, `email` opcional) |
-| POST   | `/api/auth/token/`         | Login: devuelve `access` (15 min) y `refresh` (7 días)    |
+| POST   | `/api/auth/register/`      | Crea una cuenta con `email` y `password`                  |
+| POST   | `/api/auth/token/`         | Login con email: `access` (15 min) y `refresh` (7 días)   |
 | POST   | `/api/auth/token/refresh/` | Devuelve un par nuevo e invalida el `refresh` usado       |
 | GET    | `/api/auth/me/`            | Usuario actual (`Authorization: Bearer <access>`)         |
 
-Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
+Las cuentas se identifican por email, sin distinguir mayúsculas. Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
 
 ## Variables de entorno
 

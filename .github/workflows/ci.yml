@@ -107,11 +107,11 @@ jobs:
         run: |
           API=http://localhost/api/auth
           CREDENTIALS="$(jq -n --arg password "$(openssl rand -hex 16)" \
-            '{username: "smoke", password: $password}')"
+            '{email: "smoke@example.com", password: $password}')"
           curl -fsS -X POST "$API/register/" -H 'Content-Type: application/json' -d "$CREDENTIALS"
           ACCESS="$(curl -fsS -X POST "$API/token/" -H 'Content-Type: application/json' \
             -d "$CREDENTIALS" | jq -r .access)"
-          curl -fsS "$API/me/" -H "Authorization: Bearer $ACCESS" | jq -e '.username == "smoke"'
+          curl -fsS "$API/me/" -H "Authorization: Bearer $ACCESS" | jq -e '.email == "smoke@example.com"'
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

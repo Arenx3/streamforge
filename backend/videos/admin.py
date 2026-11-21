@@ -7,7 +7,7 @@ from videos.models import Video
 class VideoAdmin(admin.ModelAdmin):
     list_display = ["title", "owner", "status", "progress", "size_bytes", "created_at"]
     list_filter = ["status", "created_at"]
-    search_fields = ["id", "title", "owner__username"]
+    search_fields = ["id", "title", "owner__email"]
     list_select_related = ["owner"]
     date_hierarchy = "created_at"
     # Status and artifacts are driven by the processing pipeline, not edited by hand.

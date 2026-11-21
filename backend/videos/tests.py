@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
+from django.urls import reverse
 
 from videos.models import InvalidTransition, Video
 
@@ -18,7 +19,7 @@ ACTIONS = {
 class VideoStateMachineTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.owner = get_user_model().objects.create_user(username="owner", password="x")
+        cls.owner = get_user_model().objects.create_user(email="owner@example.com", password="x")
 
     def make_video(self, status=Status.PENDING_UPLOAD):
         return Video.objects.create(owner=self.owner, title="Demo", status=status)
@@ -114,3 +115,15 @@ class VideoStateMachineTests(TestCase):
 
         with self.assertRaises(IntegrityError):
             Video.objects.filter(pk=video.pk).update(progress=101)
+
+
+class VideoAdminTests(TestCase):
+    def test_search_finds_videos_by_owner_email(self):
+        users = get_user_model().objects
+        owner = users.create_user(email="owner@example.com", password="x")
+        Video.objects.create(owner=owner, title="Findable video")
+        self.client.force_login(users.create_superuser(email="root@example.com", password="x"))
+
+        response = self.client.get(reverse("admin:videos_video_changelist"), {"q": "owner@"})
+
+        self.assertContains(response, "Findable video")
