@@ -6,6 +6,7 @@ from collections import namedtuple
 from pathlib import Path
 from unittest import mock, skipUnless
 
+from boto3.exceptions import S3UploadFailedError
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
 
@@ -19,6 +20,8 @@ from videos.transcoding import (
     MediaInfo,
     TranscodeError,
     build_ffmpeg_command,
+    build_thumbnail_command,
+    extract_thumbnail,
     max_video_kbps,
     parse_probe,
     plan_renditions,
@@ -212,6 +215,98 @@ class FfmpegCommandTests(SimpleTestCase):
         self.assertEqual(command[-1], "%v/index.m3u8")
 
 
+class ThumbnailCommandTests(SimpleTestCase):
+    def command(self, at_seconds=1.5):
+        return build_thumbnail_command(
+            Path("/tmp/job/source"), Path("/tmp/job/thumbnail.webp"), at_seconds
+        )
+
+    def option(self, command, flag):
+        return command[command.index(flag) + 1]
+
+    def test_guards_and_seek_come_before_the_input(self):
+        command = self.command()
+        input_index = command.index("-i")
+
+        self.assertLess(command.index("-protocol_whitelist"), input_index)
+        self.assertLess(command.index("-format_whitelist"), input_index)
+        self.assertLess(command.index("-ss"), input_index)
+        self.assertEqual(self.option(command, "-ss"), "1.500")
+
+    def test_fits_inside_1280_without_upscaling(self):
+        video_filter = self.option(self.command(), "-vf")
+
+        self.assertIn("min(1280,iw)", video_filter)
+        self.assertIn("min(1280,ih)", video_filter)
+        self.assertIn("force_original_aspect_ratio=decrease", video_filter)
+
+    def test_writes_a_single_webp_frame(self):
+        command = self.command()
+
+        self.assertEqual(self.option(command, "-frames:v"), "1")
+        self.assertEqual(self.option(command, "-c:v"), "libwebp")
+        self.assertEqual(self.option(command, "-f"), "webp")
+        self.assertEqual(Path(command[-1]).name, "thumbnail.webp")
+
+    def test_skips_cover_art_and_strips_metadata(self):
+        command = self.command()
+
+        self.assertEqual(self.option(command, "-map"), "0:V:0")
+        self.assertEqual(self.option(command, "-map_metadata"), "-1")
+
+
+class ExtractThumbnailTests(SimpleTestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.target = self.tmp / "thumbnail" / "thumbnail.webp"
+        patcher = mock.patch("videos.transcoding.run_ffmpeg")
+        self.run_ffmpeg = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_frame(self, *_args, **_kwargs):
+        self.target.write_bytes(b"webp")
+
+    def seeks(self):
+        return [
+            call.args[0][call.args[0].index("-ss") + 1] for call in self.run_ffmpeg.call_args_list
+        ]
+
+    def test_seeks_to_ten_percent(self):
+        self.run_ffmpeg.side_effect = self.write_frame
+
+        self.assertTrue(extract_thumbnail(Path("source"), self.target, 40.0))
+        self.assertEqual(self.seeks(), ["4.000"])
+
+    def test_falls_back_to_the_start_when_seek_finds_no_frame(self):
+        calls = iter([lambda: None, self.write_frame])
+        self.run_ffmpeg.side_effect = lambda *_args, **_kwargs: next(calls)()
+
+        self.assertTrue(extract_thumbnail(Path("source"), self.target, 0.5))
+        self.assertEqual(self.seeks(), ["0.050", "0.000"])
+
+    def test_falls_back_when_ffmpeg_fails(self):
+        def fail_then_write(*_args, **_kwargs):
+            if self.run_ffmpeg.call_count == 1:
+                raise TranscodeError("no frame")
+            self.write_frame()
+
+        self.run_ffmpeg.side_effect = fail_then_write
+
+        self.assertTrue(extract_thumbnail(Path("source"), self.target, 10.0))
+
+    def test_empty_output_counts_as_no_frame(self):
+        self.run_ffmpeg.side_effect = lambda *_args, **_kwargs: self.target.write_bytes(b"")
+
+        self.assertFalse(extract_thumbnail(Path("source"), self.target, 10.0))
+        self.assertEqual(self.run_ffmpeg.call_count, 2)
+
+    def test_returns_false_when_every_attempt_fails(self):
+        self.run_ffmpeg.side_effect = TranscodeError("broken")
+
+        self.assertFalse(extract_thumbnail(Path("source"), self.target, 10.0))
+
+
 class LimitsTests(SimpleTestCase):
     @override_settings(VIDEO_TRANSCODE_MAX_SECONDS=7200)
     def test_timeout_is_proportional_within_bounds(self):
@@ -240,6 +335,12 @@ def fake_hls(_command, *, cwd, timeout):
         path = cwd / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("x")
+
+
+def fake_thumbnail(_source, target, _duration):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"webp")
+    return True
 
 
 class TaskTestCase(TestCase):
@@ -287,9 +388,11 @@ class TranscodeTaskTests(TaskTestCase):
         self.probe = self.patch("videos.tasks.probe", return_value=MEDIA)
         self.run_ffmpeg = self.patch("videos.tasks.run_ffmpeg", side_effect=fake_hls)
         self.free_space = self.patch("videos.tasks.require_free_space")
+        self.thumbnail = self.patch("videos.tasks.extract_thumbnail", side_effect=fake_thumbnail)
 
     def uploaded_keys(self):
-        return [call.args[2] for call in self.s3.upload_file.call_args_list]
+        keys = [call.args[2] for call in self.s3.upload_file.call_args_list]
+        return [key for key in keys if "/hls/" in key]
 
     def test_marks_ready_with_metadata(self):
         video = self.make_video()
@@ -343,7 +446,50 @@ class TranscodeTaskTests(TaskTestCase):
             Path(call.args[2]).suffix: call.kwargs["ExtraArgs"]["ContentType"]
             for call in self.s3.upload_file.call_args_list
         }
-        self.assertEqual(types, {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t"})
+        self.assertEqual(
+            types,
+            {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".webp": "image/webp"},
+        )
+
+    def test_publishes_the_thumbnail(self):
+        video = self.make_video()
+
+        self.run_task(video)
+
+        self.assertEqual(video.thumbnail_key, f"videos/{video.id}/thumbnail.webp")
+        content_types = {
+            call.args[2]: call.kwargs["ExtraArgs"]["ContentType"]
+            for call in self.s3.upload_file.call_args_list
+        }
+        self.assertEqual(content_types[video.thumbnail_key], "image/webp")
+        self.assertEqual(self.thumbnail.call_args.args[2], MEDIA.duration)
+
+    def test_missing_thumbnail_does_not_fail_the_video(self):
+        video = self.make_video()
+        self.thumbnail.side_effect = None
+        self.thumbnail.return_value = False
+
+        with self.assertLogs("videos.tasks", level="WARNING"):
+            self.run_task(video)
+
+        self.assertEqual(video.status, Status.READY)
+        self.assertEqual(video.thumbnail_key, "")
+
+    def test_thumbnail_upload_failure_does_not_fail_the_video(self):
+        video = self.make_video()
+
+        def fail_on_thumbnail(_path, _bucket, key, **_kwargs):
+            if key.endswith(".webp"):
+                raise S3UploadFailedError("storage hiccup")
+
+        self.s3.upload_file.side_effect = fail_on_thumbnail
+
+        with self.assertLogs("videos.tasks", level="WARNING"):
+            self.run_task(video)
+
+        self.assertEqual(video.status, Status.READY)
+        self.assertEqual(video.thumbnail_key, "")
+        self.assertTrue(video.hls_master_key)
 
     def test_removes_temp_files_on_success(self):
         video = self.make_video()
@@ -463,11 +609,23 @@ class TranscodeTaskTests(TaskTestCase):
         self.assertFalse(self.workdir(video).exists())
 
 
-def make_sample(path, *extra, size="854x480", audio=True):
+def image_info(path):
+    output = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0"]
+        + ["-show_entries", "stream=codec_name,width,height", "-of", "csv=p=0", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    codec, width, height = output.split(",")
+    return codec, int(width), int(height)
+
+
+def make_sample(path, *extra, size="854x480", audio=True, duration=7):
     command = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y"]
-    command += ["-f", "lavfi", "-i", f"testsrc2=size={size}:rate=24:duration=7"]
+    command += ["-f", "lavfi", "-i", f"testsrc2=size={size}:rate=24:duration={duration}"]
     if audio:
-        command += ["-f", "lavfi", "-i", "sine=frequency=440:duration=7", "-c:a", "aac"]
+        command += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}", "-c:a", "aac"]
     command += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(path)]
     subprocess.run(command, check=True)
     if extra:
@@ -496,7 +654,8 @@ class RealFfmpegTests(TaskTestCase):
         self.s3.upload_file.side_effect = self.publish
 
     def publish(self, path, _bucket, key, ExtraArgs):
-        target = self.published / key.split("/hls/")[1]
+        relative = key.split("/hls/")[1] if "/hls/" in key else Path(key).name
+        target = self.published / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(path, target)
 
@@ -577,6 +736,51 @@ class RealFfmpegTests(TaskTestCase):
         self.assertEqual(video.status, Status.FAILED)
         self.assertEqual(video.error_message, "The file is not a supported video.")
         self.assertFalse(self.workdir(video).exists())
+
+    def test_full_run_publishes_a_webp_thumbnail(self):
+        video = self.transcode(self.sample)
+
+        self.assertEqual(video.thumbnail_key, f"videos/{video.id}/thumbnail.webp")
+        self.assertEqual(image_info(self.published / "thumbnail.webp"), ("webp", 854, 480))
+
+    def test_thumbnail_of_large_video_is_1280_wide(self):
+        source = make_sample(self.assets / "hd.mp4", size="1920x1080", audio=False, duration=2)
+        target = self.tmp / "out" / "thumbnail.webp"
+
+        self.assertTrue(extract_thumbnail(source, target, 2))
+        self.assertEqual(image_info(target), ("webp", 1280, 720))
+
+    def test_thumbnail_of_small_video_is_not_upscaled(self):
+        source = make_sample(self.assets / "small.mp4", size="640x360", audio=False, duration=2)
+        target = self.tmp / "out" / "thumbnail.webp"
+
+        self.assertTrue(extract_thumbnail(source, target, 2))
+        self.assertEqual(image_info(target), ("webp", 640, 360))
+
+    def test_thumbnail_of_rotated_video_stays_portrait(self):
+        source = make_sample(
+            self.assets / "tall.mp4",
+            "-display_rotation",
+            "90",
+            size="1920x1080",
+            audio=False,
+            duration=2,
+        )
+        target = self.tmp / "out" / "thumbnail.webp"
+
+        self.assertTrue(extract_thumbnail(source, target, 2))
+        self.assertEqual(image_info(target), ("webp", 720, 1280))
+
+    def test_videos_under_one_second_complete_with_thumbnail(self):
+        for name, duration in (("short", 0.4), ("single-frame", 0.04)):
+            with self.subTest(name):
+                source = make_sample(self.assets / f"{name}.mp4", audio=False, duration=duration)
+
+                video = self.transcode(source)
+
+                self.assertEqual(video.status, Status.READY, video.error_message)
+                self.assertEqual(video.thumbnail_key, f"videos/{video.id}/thumbnail.webp")
+                self.assertEqual(image_info(self.published / "thumbnail.webp")[0], "webp")
 
     def test_rejects_playlists_that_could_read_local_files(self):
         attacks = {
