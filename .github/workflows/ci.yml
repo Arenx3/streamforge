@@ -143,6 +143,25 @@ jobs:
           print(body)
           assert '360p/index.m3u8' in body and '480p/index.m3u8' in body
           "
+      - name: Gateway survives a backend IP change
+        run: |
+          backend_ip() {
+            docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+              "$(docker compose ps -q backend)"
+          }
+          OLD_IP="$(backend_ip)"
+          docker compose rm -sf backend
+          # Takes the freed address, so the new backend container must get another one.
+          docker run -d --rm --name ip-holder --network streamforge_default redis:7-alpine sleep 120
+          trap 'docker rm -f ip-holder' EXIT
+          docker compose up -d --no-deps --wait backend
+          test "$(backend_ip)" != "$OLD_IP"
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost/api/health/; then echo; exit 0; fi
+            sleep 1
+          done
+          echo "nginx did not reconnect to the recreated backend" >&2
+          exit 1
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color
