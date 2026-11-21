@@ -2,6 +2,9 @@ name: streamforge
 
 x-backend-env: &backend-env
   env_file: .env
+  environment:
+    # Host browsers use for presigned URLs ("storage" only resolves inside Docker).
+    AWS_S3_PUBLIC_ENDPOINT_URL: ${AWS_S3_PUBLIC_ENDPOINT_URL:-http://localhost:${STORAGE_API_PORT:-9000}}
   restart: unless-stopped
 
 services:
@@ -47,6 +50,7 @@ services:
       - storage_data:/data
     ports:
       - "${STORAGE_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${STORAGE_API_PORT:-9000}:9000"
 
   storage-init:
     image: amazon/aws-cli:2.39.5

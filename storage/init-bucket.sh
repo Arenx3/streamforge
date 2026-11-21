@@ -27,3 +27,11 @@ else
   s3api create-bucket --bucket "$AWS_STORAGE_BUCKET_NAME" >/dev/null
   echo "[storage-init] bucket '$AWS_STORAGE_BUCKET_NAME' created"
 fi
+
+# Browsers upload straight to the bucket, so it must accept their origin.
+origins=$(printf '%s' "${CORS_ALLOWED_ORIGINS:-}" | tr -d ' \r' | sed 's/,/","/g')
+if [ -n "$origins" ]; then
+  s3api put-bucket-cors --bucket "$AWS_STORAGE_BUCKET_NAME" --cors-configuration \
+    "{\"CORSRules\":[{\"AllowedOrigins\":[\"$origins\"],\"AllowedMethods\":[\"PUT\"],\"AllowedHeaders\":[\"*\"],\"MaxAgeSeconds\":3600}]}"
+  echo "[storage-init] CORS enabled for: $origins"
+fi
