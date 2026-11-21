@@ -106,6 +106,16 @@ Los archivos van directo del navegador a S3; Django solo coordina.
 
 Las subidas sin terminar se cancelan solas después de `VIDEO_UPLOAD_ABANDON_HOURS` (tarea periódica en `beat`).
 
+## Transcodificación
+
+Al completar la subida, el worker convierte el original a HLS:
+
+- **Calidades:** 360p, 720p y 1080p, sin escalar por encima del original. Si el original mide entre dos escalones, su tamaño real se agrega como calidad máxima (un 480p genera 360p y 480p).
+- **Formato:** H.264 + AAC en segmentos de 6 s, con keyframes alineados para cambiar de calidad sin cortes.
+- **Salida en S3:** `videos/<id>/hls/master.m3u8` y una carpeta por calidad.
+- **Seguridad:** solo se aceptan contenedores de video reales. FFmpeg no puede leer archivos locales ni la red aunque el archivo lo intente, y se eliminan los metadatos del original (como la ubicación GPS).
+- **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
+
 ## Variables de entorno
 
 Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
@@ -125,7 +135,7 @@ Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.e
 │   ├── accounts/          # registro, login JWT y perfil
 │   ├── config/            # settings, urls, celery app
 │   ├── core/              # health check, cliente S3, tareas base
-│   ├── videos/            # modelo Video, estados y subida a S3
+│   ├── videos/            # modelo Video, subida a S3 y HLS
 │   ├── Dockerfile         # imagen API (gunicorn)
 │   ├── Dockerfile.worker  # imagen worker (Celery + FFmpeg)
 │   └── entrypoint.sh      # migrate + collectstatic
