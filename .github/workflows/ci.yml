@@ -72,6 +72,8 @@ jobs:
         run: python manage.py check
       - name: Missing migrations
         run: python manage.py makemigrations --check --dry-run
+      - name: OpenAPI schema
+        run: python manage.py spectacular --validate --fail-on-warn --file /dev/null
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Run tests
@@ -162,6 +164,23 @@ jobs:
           done
           test "$STATE" = "FAILED"
           test "$(docker compose exec -T worker sh -c 'ls -A /tmp/streamforge | wc -l')" = "0"
+          PLAYBACK="$(curl -fsS "http://localhost/api/videos/$VIDEO_ID/" \
+            -H "Authorization: Bearer $ACCESS" | jq -r .playback_url)"
+          curl -fsS "$PLAYBACK" | grep -q '360p/index.m3u8'
+          SEGMENT="$(curl -fsS "${PLAYBACK%master.m3u8}360p/index.m3u8" | grep -m1 '^http')"
+          curl -fsS -o /dev/null "$SEGMENT"
+          curl -fsS -X DELETE "http://localhost/api/videos/$VIDEO_ID/" -H "Authorization: Bearer $ACCESS"
+          docker compose exec -T backend python manage.py shell -c "
+          import time
+          from django.conf import settings
+          from core.storage import s3_client
+          for _ in range(30):
+              found = s3_client().list_objects_v2(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Prefix='videos/$VIDEO_ID/')
+              if not found.get('KeyCount'):
+                  break
+              time.sleep(1)
+          assert not found.get('KeyCount'), found
+          "
       - name: Gateway survives a backend IP change
         run: |
           backend_ip() {
