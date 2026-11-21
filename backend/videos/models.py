@@ -25,6 +25,7 @@ class Video(models.Model):
         Status.READY: set(),
         Status.FAILED: set(),
     }
+    MAX_PROCESSING_ATTEMPTS = 3
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # Indexed through the (owner, -created_at) composite index below.
@@ -40,6 +41,9 @@ class Video(models.Model):
     status = models.CharField(max_length=20, choices=Status, default=Status.PENDING_UPLOAD)
     progress = models.PositiveSmallIntegerField(default=0)
     error_message = models.TextField(blank=True)
+    # Celery task running this video; a redelivered message keeps the same id.
+    processing_task_id = models.CharField(max_length=255, blank=True)
+    processing_attempts = models.PositiveSmallIntegerField(default=0)
 
     # Object keys in the S3 bucket.
     source_key = models.CharField(max_length=512, blank=True)
@@ -77,8 +81,33 @@ class Video(models.Model):
     def mark_uploaded(self, *, size_bytes=None):
         self._transition(self.Status.UPLOADED, size_bytes=size_bytes, upload_id="")
 
-    def start_processing(self):
-        self._transition(self.Status.PROCESSING, progress=0, error_message="")
+    def start_processing(self, task_id=""):
+        self._transition(
+            self.Status.PROCESSING,
+            progress=0,
+            error_message="",
+            processing_task_id=task_id,
+            processing_attempts=1,
+        )
+
+    def claim_for_processing(self, task_id):
+        """Return True if `task_id` should run the pipeline for this video."""
+        try:
+            if self.status == self.Status.UPLOADED:
+                self.start_processing(task_id=task_id)
+                return True
+            if self.status != self.Status.PROCESSING or self.processing_task_id != task_id:
+                return False
+            # Same task delivered again: the worker died mid-run.
+            if self.processing_attempts >= self.MAX_PROCESSING_ATTEMPTS:
+                self.mark_failed("Processing kept crashing and was stopped.")
+                return False
+            self._save_if_status_unchanged(
+                progress=0, processing_attempts=self.processing_attempts + 1
+            )
+            return True
+        except InvalidTransition:
+            return False
 
     def mark_ready(
         self, *, hls_master_key, thumbnail_key="", duration_seconds=None, width=None, height=None
