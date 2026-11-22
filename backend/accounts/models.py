@@ -4,6 +4,7 @@ from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -26,6 +27,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("email_verified_at", timezone.now())
         if not (extra_fields["is_staff"] and extra_fields["is_superuser"]):
             raise ValueError("Superusers must have is_staff=True and is_superuser=True")
         return self.create_user(email, password, **extra_fields)
@@ -38,6 +40,7 @@ class User(AbstractUser):
         unique=True,
         error_messages={"unique": "A user with that email already exists."},
     )
+    email_verified_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -51,3 +54,7 @@ class User(AbstractUser):
                 condition=models.Q(email=Lower("email")), name="user_email_lowercase"
             ),
         ]
+
+    @property
+    def email_verified(self):
+        return self.email_verified_at is not None
