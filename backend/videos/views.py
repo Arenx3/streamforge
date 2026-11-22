@@ -13,6 +13,7 @@ from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from accounts.permissions import IsEmailVerified
 from core.storage import STORAGE_ERRORS
 from videos.models import InvalidTransition, Video
 from videos.playback import (
@@ -141,6 +142,12 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if getattr(self, "swagger_fake_view", False):
             return Video.objects.none()
         return Video.objects.filter(owner=self.request.user).order_by("-created_at", "-id")
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        if self.action == "create":
+            permissions.append(IsEmailVerified())
+        return permissions
 
     def get_serializer_class(self):
         return VideoSerializer if self.action == "list" else VideoDetailSerializer
