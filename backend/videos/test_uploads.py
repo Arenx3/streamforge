@@ -49,7 +49,7 @@ class UploadTestCase(APITestCase):
     @classmethod
     def setUpTestData(cls):
         users = get_user_model().objects
-        cls.owner = users.create_user(email="owner@example.com")
+        cls.owner = users.create_user(email="owner@example.com", email_verified_at=timezone.now())
         cls.other = users.create_user(email="other@example.com")
 
     def setUp(self):
@@ -102,6 +102,17 @@ class CreateUploadTests(UploadTestCase):
 
         self.assertEqual(self.create().status_code, status.HTTP_401_UNAUTHORIZED)
         self.s3.create_multipart_upload.assert_not_called()
+
+    def test_requires_a_verified_email(self):
+        unverified = get_user_model().objects.create_user(email="new@example.com")
+        self.client.force_authenticate(unverified)
+
+        response = self.create()
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["code"], "email_not_verified")
+        self.s3.create_multipart_upload.assert_not_called()
+        self.assertFalse(Video.objects.exists())
 
     def test_creates_pending_video_with_one_url_per_part(self):
         response = self.create(description="Launch demo")
