@@ -119,6 +119,47 @@ services:
       redis:
         condition: service_healthy
 
+  accounts-worker:
+    <<: *backend-env
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    # Own queue: account emails must not wait behind hours-long transcodes.
+    command: >
+      celery -A config worker
+      --loglevel=INFO
+      --queues=accounts
+      --concurrency=1
+      --prefetch-multiplier=1
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 20s
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 500
+    ports:
+      # Inbox UI on loopback only: messages contain account links.
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
