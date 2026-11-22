@@ -1,12 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError, transaction
 from rest_framework import serializers
-from rest_framework.validators import UniqueValidator
 
 User = get_user_model()
-DUPLICATE_EMAIL = User._meta.get_field("email").error_messages["unique"]
+EMAIL_MAX_LENGTH = User._meta.get_field("email").max_length
+TOKEN_MAX_LENGTH = 512
 
 
 class NormalizedEmailField(serializers.EmailField):
@@ -17,23 +16,22 @@ class NormalizedEmailField(serializers.EmailField):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    email_verified = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ["id", "email", "date_joined"]
+        fields = ["id", "email", "email_verified", "date_joined"]
         read_only_fields = fields
 
 
-class RegisterSerializer(serializers.ModelSerializer):
-    email = NormalizedEmailField(
-        max_length=User._meta.get_field("email").max_length,
-        validators=[UniqueValidator(queryset=User.objects.all(), message=DUPLICATE_EMAIL)],
-    )
-    password = serializers.CharField(write_only=True, max_length=128, trim_whitespace=False)
+class DetailSerializer(serializers.Serializer):
+    detail = serializers.CharField(read_only=True)
 
-    class Meta:
-        model = User
-        fields = ["id", "email", "password", "date_joined"]
-        read_only_fields = ["id", "date_joined"]
+
+class RegisterSerializer(serializers.Serializer):
+    # No uniqueness check here: the answer must not reveal which emails exist.
+    email = NormalizedEmailField(max_length=EMAIL_MAX_LENGTH)
+    password = serializers.CharField(write_only=True, max_length=128, trim_whitespace=False)
 
     def validate(self, attrs):
         candidate = User(email=attrs["email"])
@@ -43,10 +41,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"password": exc.messages}) from exc
         return attrs
 
-    def create(self, validated_data):
-        try:
-            with transaction.atomic():
-                return User.objects.create_user(**validated_data)
-        except IntegrityError as exc:
-            # Lost a race against a concurrent signup with the same email.
-            raise serializers.ValidationError({"email": [DUPLICATE_EMAIL]}) from exc
+
+class EmailVerifySerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=TOKEN_MAX_LENGTH)
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = NormalizedEmailField(max_length=EMAIL_MAX_LENGTH)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=TOKEN_MAX_LENGTH)
+    password = serializers.CharField(write_only=True, max_length=128, trim_whitespace=False)

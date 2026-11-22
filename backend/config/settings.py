@@ -123,7 +123,12 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_ROUTES = {"accounts.*": {"queue": "accounts"}}
 CELERY_BEAT_SCHEDULE = {
+    "delete-unverified-accounts": {
+        "task": "accounts.delete_unverified_accounts",
+        "schedule": 3600,
+    },
     "abort-abandoned-uploads": {
         "task": "videos.abort_abandoned_uploads",
         "schedule": 3600,
@@ -182,11 +187,32 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "auth_login": env("THROTTLE_RATE_LOGIN", "10/minute"),
         "auth_register": env("THROTTLE_RATE_REGISTER", "10/hour"),
+        "auth_email_verify": env("THROTTLE_RATE_EMAIL_VERIFY", "20/hour"),
+        "auth_email_resend": env("THROTTLE_RATE_EMAIL_RESEND", "5/hour"),
+        "auth_password_reset": env("THROTTLE_RATE_PASSWORD_RESET", "5/hour"),
+        "auth_password_confirm": env("THROTTLE_RATE_PASSWORD_CONFIRM", "10/hour"),
     },
     # Reverse proxies in front of Django. Rate limits read the client IP from the
     # entry they appended to X-Forwarded-For, so clients cannot spoof it.
     "NUM_PROXIES": int(env("TRUSTED_PROXY_COUNT", "1")),
 }
+
+# --- Email ---
+EMAIL_BACKEND = env("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", "mailpit")
+EMAIL_PORT = int(env("EMAIL_PORT", "1025"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS")
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL")
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "StreamForge <no-reply@streamforge.local>")
+# Base of every link in an email; never derived from the request's Host header.
+FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+EMAIL_VERIFICATION_TTL_SECONDS = int(env("EMAIL_VERIFICATION_TTL_SECONDS", str(24 * 3600)))
+PASSWORD_RESET_TTL_SECONDS = int(env("PASSWORD_RESET_TTL_SECONDS", "3600"))
+ACCOUNT_UNVERIFIED_TTL_HOURS = int(env("ACCOUNT_UNVERIFIED_TTL_HOURS", "72"))
+AUTH_EMAIL_COOLDOWN_SECONDS = int(env("AUTH_EMAIL_COOLDOWN_SECONDS", "120"))
 
 API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", True)
 SPECTACULAR_SETTINGS = {
@@ -207,6 +233,8 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    # Access tokens die with the password they were issued under.
+    "CHECK_REVOKE_TOKEN": True,
 }
 
 LOGGING = {

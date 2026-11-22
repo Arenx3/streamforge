@@ -34,6 +34,8 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 | `backend`    | `backend/Dockerfile`        | API Django REST (gunicorn). Corre migraciones al iniciar  |
 | `worker`     | `backend/Dockerfile.worker` | Celery con FFmpeg para transcodificación HLS              |
 | `beat`       | `backend/Dockerfile.worker` | Tareas periódicas (limpieza de subidas abandonadas)       |
+| `accounts-worker` | `backend/Dockerfile.worker` | Correos y limpieza de cuentas, en su propia cola |
+| `mailpit`    | `axllent/mailpit`           | Bandeja local: atrapa los correos de desarrollo           |
 | `postgres`   | `postgres:16-alpine`        | Base de datos                                             |
 | `redis`      | `redis:7-alpine`            | Broker y result backend de Celery                         |
 | `storage`    | `rustfs/rustfs`             | Almacenamiento S3 local (Cloudflare R2 en producción)     |
@@ -76,6 +78,7 @@ docker compose exec worker celery -A config call core.ping
 | http://localhost/api/auth/    | Autenticación (JWT)       |
 | http://localhost/admin/       | Django admin              |
 | http://localhost:9001         | Consola de RustFS (S3)    |
+| http://localhost:8025         | Correos locales (Mailpit) |
 
 Crear un superusuario:
 
@@ -89,12 +92,25 @@ La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
 
 | Método | Ruta                       | Qué hace                                                  |
 |--------|----------------------------|-----------------------------------------------------------|
-| POST   | `/api/auth/register/`      | Crea una cuenta con `email` y `password`                  |
+| POST   | `/api/auth/register/`      | Crea una cuenta sin verificar y envía el correo           |
 | POST   | `/api/auth/token/`         | Login con email: `access` (15 min) y `refresh` (7 días)   |
 | POST   | `/api/auth/token/refresh/` | Devuelve un par nuevo e invalida el `refresh` usado       |
 | GET    | `/api/auth/me/`            | Usuario actual (`Authorization: Bearer <access>`)         |
+| POST   | `/api/auth/email/verify/`  | Confirma el correo con `token` (requiere sesión)          |
+| POST   | `/api/auth/email/resend/`  | Reenvía el correo de verificación                         |
+| POST   | `/api/auth/password/reset/` | Envía el enlace de recuperación a `email`                |
+| POST   | `/api/auth/password/reset/confirm/` | Cambia la contraseña con `token` y `password`    |
 
 Las cuentas se identifican por email, sin distinguir mayúsculas. Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
+
+### Verificación y recuperación
+
+- **Sin verificar** se puede iniciar sesión, pero no subir videos (`403`, `code: email_not_verified`). Si nadie confirma en 3 días (`ACCOUNT_UNVERIFIED_TTL_HOURS`), la cuenta se borra y el correo queda libre.
+- **Confirmar exige sesión y enlace.** Así, quien registre un correo ajeno no puede lograr que su dueño le active la cuenta.
+- **Recuperar contraseña** usa un enlace de un solo uso válido por 1 hora. También verifica el correo y cierra todas las sesiones.
+- **Privacidad:** registro y recuperación responden igual exista o no el correo.
+- **En local** los correos no salen a internet: se ven en http://localhost:8025 (Mailpit). Los enlaces apuntan a `FRONTEND_URL`.
+- **En producción** basta con configurar las variables `EMAIL_*`; `.env.example` trae el ejemplo para Resend.
 
 ## Subida de videos
 
@@ -186,6 +202,6 @@ Detalles, setup de desarrollo y qué valida el CI en [CONTRIBUTING.md](CONTRIBUT
 ## Roadmap
 
 - [x] **Fase 1 — Infraestructura:** Docker Compose, PostgreSQL, Redis, RustFS (S3), Django, Celery + FFmpeg, Nginx
-- [ ] **Fase 2 — Pipeline de video:** modelos, subida, transcodificación HLS multi-calidad, thumbnails, estados
+- [x] **Fase 2 — Pipeline de video:** modelos, subida, transcodificación HLS multi-calidad, thumbnails, estados
 - [ ] **Fase 3 — Frontend:** dashboard, subida con progreso en vivo, reproductor HLS
 - [ ] **Fase 4 — Compartir:** enlaces públicos, tests E2E con Playwright, despliegue

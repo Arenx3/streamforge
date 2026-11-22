@@ -15,6 +15,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
+from config.celery import app as celery_app
+
 User = get_user_model()
 EMAIL = "alice@example.com"
 PASSWORD = "c0rrect-horse-battery"
@@ -42,6 +44,9 @@ class AuthTestCase(APITestCase):
 
     def setUp(self):
         cache.clear()
+        always_eager = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        self.addCleanup(setattr, celery_app.conf, "task_always_eager", always_eager)
 
     def make_user(self, email=EMAIL, **extra):
         return User.objects.create_user(email=email, password=PASSWORD, **extra)
@@ -60,8 +65,8 @@ class RegisterTests(AuthTestCase):
     def test_creates_user_and_never_returns_password(self):
         response = self.register()
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(set(response.data), {"id", "email", "date_joined"})
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(set(response.data), {"detail"})
         user = User.objects.get(email="new@example.com")
         self.assertTrue(user.check_password(PASSWORD))
         self.assertNotEqual(user.password, PASSWORD)
@@ -87,20 +92,20 @@ class RegisterTests(AuthTestCase):
                 self.assertIn("password", response.data)
         self.assertFalse(User.objects.filter(email="new@example.com").exists())
 
-    def test_rejects_email_taken_in_any_form(self):
+    def test_does_not_duplicate_an_email_in_any_form(self):
         self.make_user("kate@example.com")
 
         for email in ("kate@example.com", "KATE@Example.COM", "Kate@example.com"):
             with self.subTest(email):
                 response = self.register(email=email)
 
-                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-                self.assertIn("email", response.data)
+                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(User.objects.filter(email="kate@example.com").count(), 1)
 
     def test_stores_email_in_canonical_form(self):
-        response = self.register(email="  New.User@Example.COM ")
+        self.register(email="  New.User@Example.COM ")
 
-        self.assertEqual(response.data["email"], "new.user@example.com")
+        self.assertTrue(User.objects.filter(email="new.user@example.com").exists())
 
     def test_rejects_email_too_long_once_normalized(self):
         # "İ" passes the email validator but doubles in length when lowercased.
@@ -127,7 +132,7 @@ class RegisterTests(AuthTestCase):
 
         response = self.register()
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
 
 class LoginTests(AuthTestCase):
@@ -362,8 +367,8 @@ class RateLimitTests(AuthTestCase):
         self.assertEqual(
             codes,
             [
-                status.HTTP_201_CREATED,
-                status.HTTP_201_CREATED,
+                status.HTTP_202_ACCEPTED,
+                status.HTTP_202_ACCEPTED,
                 status.HTTP_429_TOO_MANY_REQUESTS,
             ],
         )

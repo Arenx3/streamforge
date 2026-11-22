@@ -115,7 +115,22 @@ jobs:
           curl -fsS -X POST "$API/register/" -H 'Content-Type: application/json' -d "$CREDENTIALS"
           ACCESS="$(curl -fsS -X POST "$API/token/" -H 'Content-Type: application/json' \
             -d "$CREDENTIALS" | jq -r .access)"
-          curl -fsS "$API/me/" -H "Authorization: Bearer $ACCESS" | jq -e '.email == "smoke@example.com"'
+          curl -fsS "$API/me/" -H "Authorization: Bearer $ACCESS" \
+            | jq -e '.email == "smoke@example.com" and .email_verified == false'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost/api/videos/ \
+            -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+            -d '{"title": "Blocked", "content_type": "video/mp4", "size_bytes": 1024}')" = "403"
+          for i in $(seq 1 30); do
+            MESSAGE="$(curl -fsS 'http://localhost:8025/api/v1/search?query=to:smoke@example.com&limit=1' \
+              | jq -r '.messages[0].ID // empty')"
+            if [ -n "$MESSAGE" ]; then break; fi
+            sleep 1
+          done
+          EMAIL_TOKEN="$(curl -fsS "http://localhost:8025/api/v1/message/$MESSAGE" \
+            | jq -r .Text | grep -o 'token=[^[:space:]]*' | head -1 | cut -d= -f2-)"
+          curl -fsS -X POST "$API/email/verify/" -H "Authorization: Bearer $ACCESS" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg token "$EMAIL_TOKEN" '{token: $token}')" | jq -e '.email_verified == true'
           docker compose exec -T worker ffmpeg -nostdin -hide_banner -loglevel error \
             -f lavfi -i testsrc2=size=854x480:rate=24:duration=4 \
             -f lavfi -i sine=frequency=440:duration=4 \

@@ -1,0 +1,11 @@
+{% autoescape off %}{{ heading }}
+
+{{ body }}
+
+{{ action }}:
+{{ url }}
+
+{{ note }}
+
+StreamForge
+{% endautoescape %}

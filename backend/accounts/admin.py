@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import AdminUserCreationForm
 from django.contrib.auth.forms import UserChangeForm as BaseUserChangeForm
+from django.utils import timezone
 
 from accounts.models import User
 
@@ -32,7 +33,7 @@ class UserAdmin(BaseUserAdmin):
             "Permissions",
             {"fields": ["is_active", "is_staff", "is_superuser", "groups", "user_permissions"]},
         ),
-        ("Important dates", {"fields": ["last_login", "date_joined"]}),
+        ("Important dates", {"fields": ["last_login", "date_joined", "email_verified_at"]}),
     ]
     add_fieldsets = [
         (
@@ -43,3 +44,8 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     ]
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.email_verified_at = timezone.now()  # Staff vouch for who they add.
+        super().save_model(request, obj, form, change)
