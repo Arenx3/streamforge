@@ -71,7 +71,10 @@ describe("LibraryPage", () => {
 
     const row = (await screen.findByText("Demo.mp4")).closest("tr")!;
     expect(within(row).getAllByText("Procesando").length).toBeGreaterThan(0);
-    expect(within(row).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "47");
+    // One meter per layout: CSS shows the mobile or the desktop one.
+    for (const meter of within(row).getAllByRole("progressbar")) {
+      expect(meter).toHaveAttribute("aria-valuenow", "47");
+    }
     expect(await screen.findByText("2 videos · 1 listo · 1 en proceso")).toBeInTheDocument();
   });
 
