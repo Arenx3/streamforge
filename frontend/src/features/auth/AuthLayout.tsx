@@ -1,32 +1,40 @@
 import { ExternalLink } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
+import { PerforationRule } from "../../components/ui/Perforation";
 import { useConfig } from "./AuthProvider";
 
 const STAGES = [
-  ["Subida", "Directa a S3, por partes"],
-  ["Proceso", "FFmpeg en workers de Celery"],
-  ["Función", "HLS en 360p, 720p y 1080p"],
+  ["Subida", "Directa a S3, por partes", "Directa a S3"],
+  ["Proceso", "FFmpeg en workers de Celery", "Con FFmpeg"],
+  ["Función", "HLS en 360p, 720p y 1080p", "HLS adaptativo"],
 ];
 
 function PipelineTicket() {
   return (
-    <div aria-hidden className="ticket bg-ground text-bone relative max-w-[420px] rounded-xl">
-      <div className="px-6 pt-5 pb-4">
-        <div className="marquee text-marquee text-[26px] leading-7">Una función, tres pasos</div>
-        <dl className="mt-3">
-          {STAGES.map(([stage, detail]) => (
-            <div key={stage} className="border-line flex justify-between gap-4 border-b border-dashed py-2 last:border-0">
-              <dt className="font-medium">{stage}</dt>
-              <dd className="text-muted text-right text-[13px]">{detail}</dd>
-            </div>
-          ))}
-        </dl>
+    <div
+      aria-hidden
+      className="ticket bg-ground text-bone max-w-[420px]"
+      style={{ "--ticket-behind": "var(--color-rail)" } as CSSProperties}
+    >
+      <div className="marquee text-marquee px-6 pt-5 pb-3.5 text-[26px] leading-7">
+        Una función, tres pasos
       </div>
-      <div className="px-6 pb-5">
-        <span className="perforation perforation-intro" />
+      <div className="ticket-tear px-6 py-1">
+        <PerforationRule />
       </div>
+      <dl className="px-6 pt-2 pb-4">
+        {STAGES.map(([stage, detail]) => (
+          <div
+            key={stage}
+            className="border-line flex justify-between gap-4 border-b border-dashed py-2 last:border-0"
+          >
+            <dt className="font-medium">{stage}</dt>
+            <dd className="text-muted text-right text-[13px]">{detail}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -40,6 +48,14 @@ export function AuthLayout({ title, subtitle, children, footer }: Props) {
         <Link to="/login" className="marquee text-marquee w-fit text-[30px] leading-8 lg:text-[38px] lg:leading-10">
           StreamForge
         </Link>
+        <ol className="mt-3 grid grid-cols-3 gap-3 lg:hidden">
+          {STAGES.map(([stage, , short]) => (
+            <li key={stage}>
+              <span className="block text-[13px] font-medium">{stage}</span>
+              <span className="text-rail-text block text-xs">{short}</span>
+            </li>
+          ))}
+        </ol>
         <div className="my-auto hidden py-10 lg:block">
           <p className="marquee max-w-[11ch] text-[88px] leading-[84px] text-balance">
             Tu video, listo para transmitir
