@@ -199,6 +199,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "auth_login": env("THROTTLE_RATE_LOGIN", "10/minute"),
         "auth_register": env("THROTTLE_RATE_REGISTER", "10/hour"),
+        "auth_demo": env("THROTTLE_RATE_DEMO", "60/hour"),
         "auth_email_verify": env("THROTTLE_RATE_EMAIL_VERIFY", "20/hour"),
         "auth_email_resend": env("THROTTLE_RATE_EMAIL_RESEND", "5/hour"),
         "auth_password_reset": env("THROTTLE_RATE_PASSWORD_RESET", "5/hour"),
@@ -221,6 +222,10 @@ EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "StreamForge <no-reply@streamforge.local>")
 # Base of every link in an email; never derived from the request's Host header.
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost").removesuffix(":80")
+# Local inbox the app links to. Leave empty when using a real email provider.
+MAILBOX_URL = env("MAILBOX_URL", "")
+# One-click account with a sample video. Must stay off on a public deployment.
+DEMO_ENABLED = env_bool("DEMO_ENABLED")
 EMAIL_VERIFICATION_TTL_SECONDS = int(env("EMAIL_VERIFICATION_TTL_SECONDS", str(24 * 3600)))
 PASSWORD_RESET_TTL_SECONDS = int(env("PASSWORD_RESET_TTL_SECONDS", "3600"))
 ACCOUNT_UNVERIFIED_TTL_HOURS = int(env("ACCOUNT_UNVERIFIED_TTL_HOURS", "72"))

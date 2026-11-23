@@ -9,12 +9,14 @@ from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import close_old_connections
 from django.db.models import Q
 from django.utils import timezone
 
 from core.storage import STORAGE_ERRORS, delete_prefix, s3_client, with_retries
+from videos.demo import publish_sample
 from videos.heartbeat import Heartbeat
 from videos.models import InvalidTransition, Video
 from videos.progress import ProgressReporter
@@ -37,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 HLS_CONTENT_TYPES = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t"}
 RECOVERY_COOLDOWN_SECONDS = 600
+DEMO_LOCK = "demo-video-lock"
+DEMO_LOCK_SECONDS = 300
 
 
 @shared_task(name="videos.abort_abandoned_uploads")
@@ -120,6 +124,21 @@ def delete_video_files(video_id, upload_id=""):
     if upload_id:
         abort_multipart(s3, f"{prefix}source", upload_id)
     delete_prefix(s3, settings.AWS_STORAGE_BUCKET_NAME, prefix)
+
+
+@shared_task(name="videos.create_demo_video", ignore_result=True)
+def create_demo_video(user_id):
+    """Generate the demo's sample and send it through the real pipeline."""
+    owner = get_user_model().objects.filter(pk=user_id).first()
+    if owner is None or owner.videos.exists():
+        return
+    if not cache.add(DEMO_LOCK, 1, DEMO_LOCK_SECONDS):
+        return
+    try:
+        video = publish_sample(owner)
+    finally:
+        cache.delete(DEMO_LOCK)
+    transcode_video.delay(str(video.id))
 
 
 @shared_task(name="videos.recover_stuck_videos")

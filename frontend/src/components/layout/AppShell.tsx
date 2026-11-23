@@ -4,7 +4,7 @@ import { Link, NavLink } from "react-router";
 
 const NAV = [
   { to: "/", label: "Biblioteca", icon: Film, end: true },
-  { to: "/subir", label: "Subir video", icon: UploadCloud, end: false },
+  { to: "/upload", label: "Subir video", icon: UploadCloud, end: false },
 ];
 
 const navClass = ({ isActive }: { isActive: boolean }) =>

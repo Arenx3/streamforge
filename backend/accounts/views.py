@@ -1,15 +1,20 @@
+from django.conf import settings
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from accounts.demo import ensure_demo_video, get_demo_user
 from accounts.serializers import (
     DetailSerializer,
     EmailVerifySerializer,
     PasswordResetConfirmSerializer,
     PasswordResetSerializer,
     RegisterSerializer,
+    TokenPairSerializer,
     UserSerializer,
 )
 from accounts.services import (
@@ -45,6 +50,20 @@ class RegisterView(PublicAuthView):
 class LoginView(TokenObtainPairView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth_login"
+
+
+class DemoLoginView(PublicAuthView):
+    serializer_class = TokenPairSerializer
+    throttle_scope = "auth_demo"
+
+    @extend_schema(summary="Enter the local demo account", request=None)
+    def post(self, request):
+        if not settings.DEMO_ENABLED:
+            raise NotFound
+        user = get_demo_user()
+        ensure_demo_video(user)
+        refresh = RefreshToken.for_user(user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
 
 
 class MeView(generics.RetrieveAPIView):

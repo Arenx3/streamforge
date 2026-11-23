@@ -129,6 +129,43 @@
   --fill: var(--color-line-strong);
 }
 
+@keyframes perforation-fill {
+  from {
+    --progress: 0%;
+  }
+  to {
+    --progress: 100%;
+  }
+}
+
+.perforation-intro {
+  animation: perforation-fill 1.8s var(--ease-out) 200ms both;
+}
+
+/* The notches where a ticket tears, cut from the panel behind it. */
+.ticket {
+  box-shadow: var(--shadow-float);
+}
+
+.ticket::before,
+.ticket::after {
+  content: "";
+  position: absolute;
+  bottom: 23px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-rail);
+}
+
+.ticket::before {
+  left: -8px;
+}
+
+.ticket::after {
+  right: -8px;
+}
+
 @keyframes skeleton {
   50% {
     opacity: 0.45;

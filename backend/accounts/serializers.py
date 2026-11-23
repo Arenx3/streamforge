@@ -24,6 +24,11 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class TokenPairSerializer(serializers.Serializer):
+    access = serializers.CharField(read_only=True)
+    refresh = serializers.CharField(read_only=True)
+
+
 class DetailSerializer(serializers.Serializer):
     detail = serializers.CharField(read_only=True)
 
