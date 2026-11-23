@@ -18,6 +18,7 @@ export type Video = {
   description: string;
   status: VideoStatus;
   progress: number;
+  error_message: string;
   thumbnail_url: string | null;
   duration_seconds: number | null;
   width: number | null;
@@ -28,7 +29,6 @@ export type Video = {
 };
 
 export type VideoDetail = Video & {
-  error_message: string;
   processed_at: string | null;
   playback_url: string | null;
   share_token: string | null;

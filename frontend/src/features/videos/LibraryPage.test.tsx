@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endSession, startSession } from "../../lib/api";
 import type { Video } from "./api";
 import { LibraryPage } from "./LibraryPage";
+import { videoJourney } from "./VideoTicket";
 
 const access = `h.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 600 }))}.s`;
 const json = (status: number, body: unknown) =>
@@ -18,6 +19,7 @@ const video = (overrides: Partial<Video>): Video => ({
   description: "",
   status: "READY",
   progress: 100,
+  error_message: "",
   thumbnail_url: null,
   duration_seconds: 65,
   width: 1920,
@@ -73,9 +75,26 @@ describe("LibraryPage", () => {
     expect(within(row).getAllByText("Procesando").length).toBeGreaterThan(0);
     // One meter per layout: CSS shows the mobile or the desktop one.
     for (const meter of within(row).getAllByRole("progressbar")) {
-      expect(meter).toHaveAttribute("aria-valuenow", "47");
+      expect(meter).toHaveAttribute("aria-valuetext", "Proceso: 47 %");
     }
+    expect(within(row).getAllByText("47 %").length).toBeGreaterThan(0);
     expect(await screen.findByText("2 videos · 1 listo · 1 en proceso")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["UPLOADED", 0, ""],
+    ["PROCESSING", 47, ""],
+    ["FAILED", 31, "The file is not a supported video."],
+    ["FAILED", 0, "Upload abandoned before it was completed."],
+  ] as const)("fills a %s row like its ticket at %d %%", async (status, progress, error_message) => {
+    respond([video({ title: "Demo.mp4", status, progress, error_message })]);
+    renderLibrary();
+
+    const row = (await screen.findByText("Demo.mp4")).closest("tr")!;
+    const journey = videoJourney({ status, progress, error_message });
+    const [meter] = within(row).getAllByRole("progressbar");
+    expect(meter).toHaveAttribute("aria-valuenow", String(Math.round(journey.percent)));
+    expect(meter).toHaveAttribute("data-tone", journey.tone);
   });
 
   it("asks the API for the selected filter", async () => {

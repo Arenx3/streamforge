@@ -155,6 +155,13 @@ class ListVideosTests(VideoApiTestCase):
         self.assertFalse(PRIVATE_FIELDS & set(item))
         self.assertNotIn("playback_url", item)
 
+    def test_says_why_a_video_failed(self):
+        self.make_video(Status.FAILED, error_message="Upload abandoned before it was completed.")
+
+        row = self.client.get(self.list_url).data["results"][0]
+
+        self.assertEqual(row["error_message"], "Upload abandoned before it was completed.")
+
     def test_page_shares_one_storage_client(self):
         for _ in range(3):
             self.make_video()

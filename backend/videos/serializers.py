@@ -19,6 +19,7 @@ class VideoSerializer(serializers.ModelSerializer):
             "description",
             "status",
             "progress",
+            "error_message",
             "thumbnail_url",
             "duration_seconds",
             "width",
@@ -47,7 +48,6 @@ class VideoDetailSerializer(VideoSerializer):
     class Meta(VideoSerializer.Meta):
         fields = [
             *VideoSerializer.Meta.fields,
-            "error_message",
             "processed_at",
             "playback_url",
             "share_token",

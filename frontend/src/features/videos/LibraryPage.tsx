@@ -19,7 +19,8 @@ import {
   type VideoFilter,
   type VideoSummary,
 } from "./api";
-import { StatusMark, statusLabel, statusTone } from "./StatusMark";
+import { StatusMark } from "./StatusMark";
+import { videoJourney } from "./VideoTicket";
 import { Thumbnail } from "./Thumbnail";
 import { DeleteVideoDialog, EditVideoDialog } from "./VideoDialogs";
 
@@ -46,19 +47,12 @@ function summaryText(summary: VideoSummary | undefined) {
     .join(" · ");
 }
 
+/** The same trip the video's ticket shows; the job's own percent sits with its state. */
 function Progress({ video }: { video: Video }) {
-  const showPercent = video.status === "PROCESSING" || video.status === "FAILED";
+  const { percent, tone, spoken } = videoJourney(video);
   return (
-    <span className="flex w-[190px] items-center gap-2.5 xl:w-[290px]">
-      <Perforation
-        value={video.status === "READY" ? 100 : video.progress}
-        tone={statusTone(video.status)}
-        label={`Avance de ${video.title}: ${statusLabel(video.status)}`}
-        className="min-w-0 flex-1"
-      />
-      <span className={`tabular w-10 shrink-0 text-right text-[13px] ${showPercent ? "text-bone" : "invisible"}`}>
-        {video.progress} %
-      </span>
+    <span className="block w-[190px] lg:w-[120px] xl:w-[190px] min-[1400px]:w-[290px]">
+      <Perforation value={percent} tone={tone} label={`Avance de ${video.title}`} valueText={spoken} />
     </span>
   );
 }
@@ -78,9 +72,9 @@ function VideoRow({
         <Link to={`/videos/${video.id}`} className="flex min-w-0 items-center gap-3 rounded">
           <Thumbnail url={video.thumbnail_url} className="h-10 w-[72px]" />
           <span className="min-w-0">
-            <span className="line-clamp-2 font-medium break-words md:line-clamp-1">{video.title}</span>
+            <span className="line-clamp-2 font-medium break-words min-[1400px]:line-clamp-1">{video.title}</span>
             <span className="mt-0.5 block text-[13px] md:hidden">
-              <StatusMark status={video.status} />
+              <StatusMark status={video.status} progress={video.progress} />
             </span>
             {video.status === "PROCESSING" && (
               <span className="mt-1.5 block lg:hidden">
@@ -91,9 +85,9 @@ function VideoRow({
         </Link>
       </td>
       <td className={`${cellClass} hidden md:table-cell`}>
-        <StatusMark status={video.status} />
+        <StatusMark status={video.status} progress={video.progress} />
       </td>
-      <td className={`${cellClass} hidden w-[33%] lg:table-cell`}>
+      <td className={`${cellClass} hidden w-px lg:table-cell`}>
         <Progress video={video} />
       </td>
       <td className={`${cellClass} ${numberClass} hidden sm:table-cell`}>
