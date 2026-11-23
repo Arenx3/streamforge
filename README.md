@@ -75,6 +75,7 @@ docker compose exec worker celery -A config call core.ping
 
 | URL                           | Qué es                    |
 |-------------------------------|---------------------------|
+| http://localhost/             | La aplicación             |
 | http://localhost/api/health/  | Health check del stack    |
 | http://localhost/api/docs/    | API interactiva (Swagger) |
 | http://localhost/api/auth/    | Autenticación (JWT)       |
@@ -96,6 +97,16 @@ docker compose exec backend python manage.py createsuperuser
 4. Confirma la cuenta en `POST /api/auth/email/verify/` con ese token.
 
 Para apagar todo usa `docker compose down`. Para borrar también los datos, `docker compose down -v`.
+
+### Desarrollar el frontend
+
+Con el stack levantado, Vite recarga los cambios al instante y usa la API de Docker:
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+```
 
 ## Autenticación
 
