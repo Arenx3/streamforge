@@ -15,4 +15,10 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": "error",
     },
   },
+  {
+    // Playwright fixtures receive a function called `use`, which is not a React hook.
+    files: ["e2e/**/*.ts"],
+    languageOptions: { globals: globals.node },
+    rules: { "react-hooks/rules-of-hooks": "off", "@typescript-eslint/consistent-type-imports": "off" },
+  },
 );
