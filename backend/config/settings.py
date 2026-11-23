@@ -23,9 +23,21 @@ def env_list(key, default=""):
     return [item.strip() for item in os.environ.get(key, default).split(",") if item.strip()]
 
 
-SECRET_KEY = env("DJANGO_SECRET_KEY")
-if SECRET_KEY == "change-me":
-    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY: it signs sessions and API tokens.")
+def load_secret_key(environ=os.environ):
+    """From the environment, or from the file Docker generates on first boot."""
+    key = environ.get("DJANGO_SECRET_KEY", "").strip()
+    path = environ.get("DJANGO_SECRET_KEY_FILE", "")
+    if not key and path:
+        try:
+            key = Path(path).read_text().strip()
+        except OSError as exc:
+            raise ImproperlyConfigured(f"Cannot read DJANGO_SECRET_KEY_FILE: {path}") from exc
+    if not key or key == "change-me":
+        raise ImproperlyConfigured("Set DJANGO_SECRET_KEY: it signs sessions and API tokens.")
+    return key
+
+
+SECRET_KEY = load_secret_key()
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")

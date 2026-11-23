@@ -1,20 +1,47 @@
 name: streamforge
 
+# Working local defaults, then optional personal overrides: no setup needed to run.
+x-env-files: &env-files
+  - path: .env.example
+  - path: .env
+    required: false
+
 x-backend-env: &backend-env
-  env_file: .env
+  env_file: *env-files
   environment:
     # Host browsers use for presigned URLs ("storage" only resolves inside Docker).
     AWS_S3_PUBLIC_ENDPOINT_URL: ${AWS_S3_PUBLIC_ENDPOINT_URL:-http://localhost:${STORAGE_API_PORT:-9000}}
+    # Used when DJANGO_SECRET_KEY is empty.
+    DJANGO_SECRET_KEY_FILE: /run/streamforge/django_secret_key
+  volumes:
+    - app_secrets:/run/streamforge:ro
   restart: unless-stopped
 
 services:
+  # Creates a random Django secret on first boot and keeps it in a volume.
+  secrets-init:
+    image: redis:7-alpine
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        key=/secrets/django_secret_key
+        if [ ! -s "$$key" ]; then
+          head -c 48 /dev/urandom | base64 | tr -d '\n' > "$$key.tmp"
+          mv "$$key.tmp" "$$key"
+        fi
+        chmod 0444 "$$key"
+    volumes:
+      - app_secrets:/secrets
+    restart: "no"
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-streamforge}
+      POSTGRES_USER: ${POSTGRES_USER:-streamforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -40,8 +67,8 @@ services:
     image: rustfs/rustfs:1.0.4
     restart: unless-stopped
     environment:
-      RUSTFS_ACCESS_KEY: ${AWS_ACCESS_KEY_ID}
-      RUSTFS_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY}
+      RUSTFS_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:-streamforge}
+      RUSTFS_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:-local-dev-only}
       RUSTFS_VOLUMES: /data
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ENABLE: "true"
@@ -49,12 +76,12 @@ services:
     volumes:
       - storage_data:/data
     ports:
-      - "${STORAGE_CONSOLE_PORT:-9001}:9001"
+      - "${BIND_ADDRESS:-127.0.0.1}:${STORAGE_CONSOLE_PORT:-9001}:9001"
       - "127.0.0.1:${STORAGE_API_PORT:-9000}:9000"
 
   storage-init:
     image: amazon/aws-cli:2.39.5
-    env_file: .env
+    env_file: *env-files
     depends_on:
       - storage
     volumes:
@@ -69,7 +96,10 @@ services:
       dockerfile: Dockerfile
     volumes:
       - static_files:/app/staticfiles
+      - app_secrets:/run/streamforge:ro
     depends_on:
+      secrets-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -96,6 +126,8 @@ services:
       --concurrency=${CELERY_CONCURRENCY:-2}
       --prefetch-multiplier=1
     depends_on:
+      secrets-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -116,6 +148,8 @@ services:
       dockerfile: Dockerfile.worker
     command: celery -A config beat --loglevel=INFO --schedule=/tmp/streamforge/celerybeat-schedule
     depends_on:
+      secrets-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -133,6 +167,8 @@ services:
       --prefetch-multiplier=1
     init: true
     depends_on:
+      secrets-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -165,7 +201,7 @@ services:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - static_files:/var/www/static:ro
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:${NGINX_PORT:-80}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -175,3 +211,4 @@ volumes:
   redis_data:
   storage_data:
   static_files:
+  app_secrets:
