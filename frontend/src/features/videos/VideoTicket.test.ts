@@ -15,6 +15,12 @@ describe("videoJourney", () => {
     expect(details("READY", 100)).toEqual(["Completa", "Completo", "Lista"]);
   });
 
+  it("marks an unfinished upload like the library does", () => {
+    const [upload] = videoJourney({ status: "PENDING_UPLOAD", progress: 0 }).stages;
+
+    expect(upload.state).toBe("unfinished");
+  });
+
   it("fills the line under the stage in course", () => {
     expect(videoJourney({ status: "UPLOADED", progress: 0 }).percent).toBeCloseTo(STAGE_SHARE);
     expect(videoJourney({ status: "PROCESSING", progress: 50 }).percent).toBeCloseTo(50);

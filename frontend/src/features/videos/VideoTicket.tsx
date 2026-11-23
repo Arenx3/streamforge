@@ -1,10 +1,25 @@
-import { Circle, CircleAlert, CircleCheck, CircleSlash, Clock3, LoaderCircle } from "lucide-react";
+import {
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  Clock3,
+  LoaderCircle,
+  UploadCloud,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Perforation, type PerforationTone } from "../../components/ui/Perforation";
 import type { Video } from "./api";
 
-export type StageState = "waiting" | "queued" | "active" | "done" | "failed" | "cancelled";
+export type StageState =
+  | "waiting"
+  | "unfinished"
+  | "queued"
+  | "active"
+  | "done"
+  | "failed"
+  | "cancelled";
 export type TicketStage = { label: string; detail: string; state: StageState };
 
 export type TicketJourney = {
@@ -20,7 +35,8 @@ const MARKS: Record<
   StageState,
   { icon: typeof Circle; mark: string; text: string; spin?: boolean }
 > = {
-  waiting: { icon: Circle, mark: "text-line-strong", text: "text-muted" },
+  waiting: { icon: Circle, mark: "text-muted", text: "text-muted" },
+  unfinished: { icon: UploadCloud, mark: "text-muted", text: "text-muted" },
   queued: { icon: Clock3, mark: "text-bone-soft", text: "text-bone-soft" },
   active: { icon: LoaderCircle, mark: "text-brass-bright", text: "text-bone", spin: true },
   done: { icon: CircleCheck, mark: "text-ok", text: "text-bone-soft" },
@@ -49,7 +65,7 @@ export function videoJourney({ status, progress, error_message }: JourneyVideo):
     case "PENDING_UPLOAD":
       return {
         stages: [
-          ticketStage("Subida", "Sin terminar", "waiting"),
+          ticketStage("Subida", "Sin terminar", "unfinished"),
           pendingStage("Proceso"),
           pendingStage("Función"),
         ],

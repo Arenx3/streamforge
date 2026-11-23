@@ -35,7 +35,7 @@ export function applyVideoEvent(client: QueryClient, event: VideoEvent) {
       ? {
           ...page,
           results: page.results.map((video) =>
-            video.id === event.id ? { ...video, status, progress } : video,
+            video.id === event.id ? { ...video, status, progress, error_message } : video,
           ),
         }
       : undefined,
