@@ -12,8 +12,8 @@ import { useAuth } from "./AuthProvider";
 export function AccountMenu() {
   const { user, logout } = useAuth();
   return (
-    <div className="flex items-center gap-1 md:px-1">
-      <span title={user?.email} className="text-rail-text hidden min-w-0 flex-1 truncate text-xs md:block">
+    <div className="flex items-center gap-1 md:px-1 md:group-data-[compact=true]/rail:justify-center md:group-data-[compact=true]/rail:px-0">
+      <span title={user?.email} className="text-rail-text hidden min-w-0 flex-1 truncate text-xs md:block md:group-data-[compact=true]/rail:hidden">
         {user?.email}
       </span>
       <Button

@@ -19,6 +19,7 @@ import {
 } from "react";
 
 import { Button } from "../../components/ui/Button";
+import { fitDots } from "../../components/ui/Perforation";
 import { formatDuration } from "../../lib/format";
 
 const AUTO_LEVEL = -1;
@@ -158,6 +159,16 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
 
   useEffect(() => () => clearTimeout(hideTimer.current), []);
 
+  // House lights: the rest of the app goes dark while the video plays.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (playing) root.dataset.lights = "down";
+    else delete root.dataset.lights;
+    return () => {
+      delete root.dataset.lights;
+    };
+  }, [playing]);
+
   const revealControls = useCallback(() => {
     setControlsVisible(true);
     clearTimeout(hideTimer.current);
@@ -256,9 +267,9 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
       onMouseLeave={() => playing && setControlsVisible(false)}
       onFocus={revealControls}
       data-controls={showControls}
-      className={`player group relative aspect-video w-full overflow-hidden bg-black outline-offset-2 ${
-        fullscreen ? "" : "shadow-float rounded-lg"
-      } ${showControls ? "" : "cursor-none"}`}
+      className={`player group relative aspect-video max-h-dvh w-full overflow-hidden bg-black -outline-offset-2 ${
+        showControls ? "" : "cursor-none"
+      }`}
     >
       <video
         ref={videoRef}
@@ -345,6 +356,7 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
           <div className={`player-controls absolute inset-x-0 bottom-0 px-3 pt-10 pb-2 ${started ? "" : "invisible"}`}>
             <div className="player-timeline relative h-5">
               <span
+                ref={fitDots}
                 aria-hidden
                 className="player-track"
                 style={{ "--played": `${played}%`, "--buffered": `${loadedPercent}%` } as CSSProperties}

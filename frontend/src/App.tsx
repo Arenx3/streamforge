@@ -14,6 +14,7 @@ import {
   VerifyEmailPage,
 } from "./features/auth/pages";
 import { UploadDock, UploadPage, UploadWatcher } from "./features/upload/UploadPage";
+import { useShowsPlayer } from "./features/videos/api";
 import { LibraryPage } from "./features/videos/LibraryPage";
 import { LiveUpdates } from "./features/videos/LiveUpdates";
 import { VideoPage } from "./features/videos/VideoPage";
@@ -24,8 +25,10 @@ const queryClient = new QueryClient({
 });
 
 function AppLayout() {
+  // Watching a video: the rail steps aside so the video takes the room.
+  const watching = useShowsPlayer();
   return (
-    <AppShell account={<AccountMenu />}>
+    <AppShell account={<AccountMenu />} compact={watching}>
       <UnverifiedBanner />
       <Outlet />
       <LiveUpdates />
