@@ -21,6 +21,18 @@ def _check(name, fn):
 
 
 @require_GET
+def public_config(request):
+    """What the app needs before login. Nothing here is sensitive."""
+    return JsonResponse(
+        {
+            "demo_enabled": settings.DEMO_ENABLED,
+            "mailbox_url": settings.MAILBOX_URL,
+            "max_upload_bytes": settings.VIDEO_UPLOAD_MAX_BYTES,
+        }
+    )
+
+
+@require_GET
 def health(request):
     checks = {
         "database": _check("database", connection.ensure_connection),
