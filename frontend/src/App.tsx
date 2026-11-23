@@ -13,7 +13,7 @@ import {
   ResetPasswordPage,
   VerifyEmailPage,
 } from "./features/auth/pages";
-import { Home } from "./pages/Home";
+import { LibraryPage } from "./features/videos/LibraryPage";
 import { NotFound } from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -44,8 +44,9 @@ export function App() {
             <Route path="verify-email" element={<VerifyEmailPage />} />
             <Route element={<RequireAuth />}>
               <Route element={<AppLayout />}>
-                <Route index element={<Home />} />
-                <Route path="upload" element={<Home />} />
+                <Route index element={<LibraryPage />} />
+                <Route path="upload" element={<LibraryPage />} />
+                <Route path="videos/:id" element={<LibraryPage />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
