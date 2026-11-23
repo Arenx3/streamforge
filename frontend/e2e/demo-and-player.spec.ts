@@ -58,4 +58,30 @@ test.describe("demo and player", () => {
     await expect(page.getByRole("alert")).toHaveCount(0);
     browserErrors.length = 0; // The 403 above is logged by the browser on purpose.
   });
+
+  test("keeps a play pressed while the link renews", async ({ page, browserErrors }) => {
+    let expired = false;
+    let finishRenewal = () => {};
+    const renewal = new Promise<void>((resolve) => {
+      finishRenewal = resolve;
+    });
+    await page.route("**/seg_00001.ts*", async (route) => {
+      if (expired) return route.continue();
+      expired = true;
+      return route.fulfill({ status: 403, body: "expired" });
+    });
+    await page.route(/\/api\/videos\/[0-9a-f-]{36}\/$/, async (route) => {
+      if (expired) await renewal;
+      await route.continue();
+    });
+    await page.reload();
+    await expect.poll(() => expired).toBe(true);
+
+    await page.getByRole("button", { name: "Reproducir" }).first().click();
+    finishRenewal();
+
+    await expect.poll(async () => (await playerState(page)).time, { timeout: 20_000 }).toBeGreaterThan(1);
+    await expect(page.getByRole("button", { name: "Pausar" })).toBeVisible();
+    browserErrors.length = 0; // The 403 above is logged by the browser on purpose.
+  });
 });
