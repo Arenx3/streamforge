@@ -220,7 +220,7 @@ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL")
 EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "StreamForge <no-reply@streamforge.local>")
 # Base of every link in an email; never derived from the request's Host header.
-FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = env("FRONTEND_URL", "http://localhost").removesuffix(":80")
 EMAIL_VERIFICATION_TTL_SECONDS = int(env("EMAIL_VERIFICATION_TTL_SECONDS", str(24 * 3600)))
 PASSWORD_RESET_TTL_SECONDS = int(env("PASSWORD_RESET_TTL_SECONDS", "3600"))
 ACCOUNT_UNVERIFIED_TTL_HOURS = int(env("ACCOUNT_UNVERIFIED_TTL_HOURS", "72"))
