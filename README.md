@@ -89,12 +89,15 @@ Crear un superusuario:
 docker compose exec backend python manage.py createsuperuser
 ```
 
+### Probar la demo
+
+Abre http://localhost/ y pulsa **Entrar a la demo**. Entras a una cuenta local con un video de muestra generado en tu máquina y procesado por el pipeline real. Se desactiva con `DEMO_ENABLED=False`, y debe estar así en cualquier despliegue público.
+
 ### Probar el flujo de cuenta
 
-1. Abre http://localhost/api/docs/ y crea una cuenta en `POST /api/auth/register/`.
-2. Abre http://localhost:8025, entra al correo y copia lo que aparece después de `#token=` en el enlace.
-3. Inicia sesión en `POST /api/auth/token/` y pega el `access` en **Authorize**.
-4. Confirma la cuenta en `POST /api/auth/email/verify/` con ese token.
+1. En http://localhost/register crea una cuenta.
+2. Abre http://localhost:8025 y pulsa el enlace del correo.
+3. Inicia sesión: la cuenta queda confirmada y ya puedes subir videos.
 
 Para apagar todo usa `docker compose down`. Para borrar también los datos, `docker compose down -v`.
 
