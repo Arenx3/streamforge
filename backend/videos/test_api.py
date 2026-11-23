@@ -130,6 +130,17 @@ class ListVideosTests(VideoApiTestCase):
 
         self.assertEqual([item["id"] for item in response.data["results"]], [str(ready.id)])
 
+    def test_filters_by_several_statuses(self):
+        queued = self.make_video(Status.UPLOADED)
+        running = self.make_video(Status.PROCESSING)
+        self.make_video(Status.READY)
+
+        response = self.client.get(self.list_url, {"status": "UPLOADED,PROCESSING"})
+
+        self.assertCountEqual(
+            [item["id"] for item in response.data["results"]], [str(queued.id), str(running.id)]
+        )
+
     def test_rejects_unknown_status(self):
         response = self.client.get(self.list_url, {"status": "NOPE"})
 
@@ -152,6 +163,29 @@ class ListVideosTests(VideoApiTestCase):
 
         self.assertTrue(all(item["thumbnail_url"] for item in response.data["results"]))
         self.make_client.assert_called_once()
+
+
+class VideoSummaryTests(VideoApiTestCase):
+    url = reverse("video-summary")
+
+    def test_counts_your_videos_by_status(self):
+        self.make_video(Status.READY)
+        self.make_video(Status.READY)
+        self.make_video(Status.FAILED)
+        self.make_video(Status.READY, owner=self.other)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {"PENDING_UPLOAD": 0, "UPLOADED": 0, "PROCESSING": 0, "READY": 2, "FAILED": 1},
+        )
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(None)
+
+        self.assertEqual(self.client.get(self.url).status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class VideoDetailTests(VideoApiTestCase):

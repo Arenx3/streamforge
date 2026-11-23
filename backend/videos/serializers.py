@@ -99,6 +99,14 @@ class VideoCreatedSerializer(serializers.Serializer):
     upload = UploadTicketSerializer()
 
 
+class VideoSummarySerializer(serializers.Serializer):
+    PENDING_UPLOAD = serializers.IntegerField()
+    UPLOADED = serializers.IntegerField()
+    PROCESSING = serializers.IntegerField()
+    READY = serializers.IntegerField()
+    FAILED = serializers.IntegerField()
+
+
 class VideoStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Video.Status.choices)
     progress = serializers.IntegerField()
