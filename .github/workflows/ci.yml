@@ -74,6 +74,13 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: OpenAPI schema
         run: python manage.py spectacular --validate --fail-on-warn --file /dev/null
+      - name: Production settings pass the deploy check
+        run: |
+          set -a
+          . ../.env.production.example
+          set +a
+          DJANGO_SECRET_KEY="$(openssl rand -base64 48)" \
+            python manage.py check --deploy --fail-level WARNING
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Run tests
@@ -123,6 +130,17 @@ jobs:
           curl -fsS http://localhost/ | grep -q '<div id="root">'
           curl -fsS http://localhost/ruta/del/cliente | grep -q '<div id="root">'
           curl -fsS http://localhost/api/health/ | jq -e '.status == "ok"'
+      - name: Gateway ignores a forged scheme
+        run: |
+          DEMO="$(curl -fsS -X POST http://localhost/api/auth/demo/ | jq -r .access)"
+          for i in $(seq 1 120); do
+            VIDEO="$(curl -fsS http://localhost/api/videos/?status=READY \
+              -H "Authorization: Bearer $DEMO" | jq -r '.results[0].id // empty')"
+            if [ -n "$VIDEO" ]; then break; fi
+            sleep 2
+          done
+          curl -fsS "http://localhost/api/videos/$VIDEO/" -H 'X-Forwarded-Proto: https' \
+            -H "Authorization: Bearer $DEMO" | jq -e '.playback_url | startswith("http://")'
       - name: Worker runs a task with FFmpeg
         run: |
           docker compose exec -T backend python manage.py shell -c "

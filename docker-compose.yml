@@ -233,8 +233,14 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    environment:
+      # The only variables the config template may read.
+      NGINX_ENVSUBST_FILTER: "^(BEHIND_TLS_PROXY|NGINX_STORAGE_ORIGINS)$$"
+      BEHIND_TLS_PROXY: ${BEHIND_TLS_PROXY:-false}
+      # Where the browser loads video from: the bucket's public host.
+      NGINX_STORAGE_ORIGINS: "${NGINX_STORAGE_ORIGINS:-http://localhost:* http://127.0.0.1:*}"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - static_files:/var/www/static:ro
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${NGINX_PORT:-80}:80"

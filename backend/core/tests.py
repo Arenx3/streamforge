@@ -1,7 +1,32 @@
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
+
+
+@override_settings(SECURE_SSL_REDIRECT=True, SECURE_HSTS_SECONDS=3600)
+class HttpsInProductionTests(SimpleTestCase):
+    url = reverse("public-config")
+
+    def test_redirects_plain_http(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 301)
+        self.assertTrue(response["Location"].startswith("https://"))
+
+    def test_trusts_the_scheme_the_gateway_reports(self):
+        response = self.client.get(self.url, HTTP_X_FORWARDED_PROTO="https")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("max-age=3600", response["Strict-Transport-Security"])
+
+    @mock.patch("core.views.s3_client")
+    @mock.patch("core.views.redis.Redis.from_url")
+    @mock.patch("core.views.connection")
+    def test_container_health_checks_stay_on_http(self, connection, redis_from_url, s3_client):
+        response = self.client.get(reverse("health"))
+
+        self.assertEqual(response.status_code, 200)
 
 
 @mock.patch("core.views.s3_client")
