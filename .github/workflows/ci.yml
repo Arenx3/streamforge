@@ -131,6 +131,16 @@ jobs:
           print(result)
           assert result['ffmpeg'], 'FFmpeg not available in worker'
           "
+      - name: Demo account holds a processed sample
+        run: |
+          DEMO="$(curl -fsS -X POST http://localhost/api/auth/demo/ | jq -r .access)"
+          for i in $(seq 1 120); do
+            STATE="$(curl -fsS http://localhost/api/videos/ -H "Authorization: Bearer $DEMO" \
+              | jq -r '.results[0].status // empty')"
+            if [ "$STATE" = "READY" ]; then break; fi
+            sleep 2
+          done
+          test "$STATE" = "READY"
       - name: Auth, upload and transcode flow
         run: |
           API=http://localhost/api/auth
