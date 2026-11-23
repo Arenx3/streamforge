@@ -187,8 +187,13 @@ Documentación interactiva en http://localhost/api/docs/ (se desactiva con `API_
 | DELETE | `/api/videos/{id}/`           | Borra el video y todos sus archivos                    |
 | POST   | `/api/videos/{id}/complete/`  | Termina la subida y empieza el procesamiento           |
 | GET    | `/api/videos/{id}/status/`    | Estado y progreso en vivo                              |
+| POST   | `/api/videos/{id}/share/`     | Crea el enlace público o devuelve el que ya existe     |
+| DELETE | `/api/videos/{id}/share/`     | Desactiva el enlace público                            |
+| GET    | `/api/public/videos/{token}/` | Video de un enlace público, sin sesión                 |
 
 **Reproducción privada:** `playback_url` lleva un token firmado que vence a las 6 horas (`VIDEO_PLAYBACK_URL_EXPIRES`) y sirve para un solo video. El bucket nunca es público: cada segmento se entrega con su propia URL prefirmada.
+
+**Enlaces públicos:** el dueño comparte un video listo en `/v/{token}`, con un token aleatorio que no revela la cuenta del dueño ni da acceso a sus otros videos. Sus enlaces de reproducción vencen a la hora (`VIDEO_SHARE_URL_EXPIRES`) y el reproductor los renueva solo. Al desactivarlo, la página y sus listas se rechazan al instante; quien ya tenía segmentos firmados puede seguir hasta que venzan.
 
 ## Manejo de fallos
 

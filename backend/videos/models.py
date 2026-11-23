@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from datetime import timedelta
 
@@ -54,6 +55,11 @@ class Video(models.Model):
     upload_id = models.CharField(max_length=1024, blank=True)
     hls_master_key = models.CharField(max_length=512, blank=True)
     thumbnail_key = models.CharField(max_length=512, blank=True)
+
+    # Unguessable, and only present while the video has a public link.
+    share_token = models.CharField(
+        max_length=64, null=True, blank=True, unique=True, editable=False
+    )
 
     duration_seconds = models.FloatField(null=True, blank=True)
     width = models.PositiveIntegerField(null=True, blank=True)
@@ -147,6 +153,17 @@ class Video(models.Model):
         if self.status != self.Status.PROCESSING:
             raise InvalidTransition(f"Cannot update progress of a {self.status} video")
         self._save_if_status_unchanged(progress=progress)
+
+    def enable_sharing(self):
+        """Give the video a public link; one that already has it keeps the same link."""
+        Video.objects.filter(pk=self.pk, share_token__isnull=True).update(
+            share_token=secrets.token_urlsafe(24)
+        )
+        self.refresh_from_db(fields=["share_token"])
+
+    def disable_sharing(self):
+        Video.objects.filter(pk=self.pk).update(share_token=None)
+        self.share_token = None
 
     def _transition(self, target, **changes):
         if not self.can_transition_to(target):
