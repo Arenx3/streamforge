@@ -137,8 +137,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mailpit:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 30s

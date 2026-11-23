@@ -110,7 +110,10 @@ Las cuentas se identifican por email, sin distinguir mayúsculas. Login y regist
 - **Recuperar contraseña** usa un enlace de un solo uso válido por 1 hora. También verifica el correo y cierra todas las sesiones.
 - **Privacidad:** registro y recuperación responden igual exista o no el correo.
 - **En local** los correos no salen a internet: se ven en http://localhost:8025 (Mailpit). Los enlaces apuntan a `FRONTEND_URL`.
-- **En producción** basta con configurar las variables `EMAIL_*`; `.env.example` trae el ejemplo para Resend.
+- **Aviso de seguridad:** cada cambio de contraseña se notifica por correo.
+- **Límites:** un correo por tipo y dirección cada 2 minutos, y `AUTH_EMAIL_DAILY_LIMIT` al día. El 20 % se reserva para recuperar cuentas, así que una avalancha de registros no bloquea a nadie.
+- **Alertas:** si un correo agota sus reintentos o se alcanza el límite, se registra en logs y se avisa al webhook de Slack o Discord en `EMAIL_ALERT_WEBHOOK_URL`, si existe.
+- **SMTP real (opcional):** configura las variables `EMAIL_*` (`.env.example` trae el ejemplo para Resend) y levanta el stack con `docker compose up -d --scale mailpit=0`.
 
 ## Subida de videos
 

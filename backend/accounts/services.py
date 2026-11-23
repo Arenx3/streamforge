@@ -13,6 +13,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 
 from accounts.tasks import (
     send_account_exists_email,
+    send_password_changed_email,
     send_password_reset_email,
     send_verification_email,
 )
@@ -70,8 +71,15 @@ def request_password_reset(email):
     _enqueue(send_password_reset_email, email)
 
 
-@transaction.atomic
 def reset_password(token, password):
+    user = _apply_password_reset(token, password)
+    # The password already changed: a lost notice must not report a failure.
+    with contextlib.suppress(EmailUnavailable):
+        _enqueue(send_password_changed_email, user.pk)
+
+
+@transaction.atomic
+def _apply_password_reset(token, password):
     user = read_token(RESET_PASSWORD, token, users=User.objects.select_for_update())
     if user is None:
         raise serializers.ValidationError({"token": [INVALID_LINK]})
@@ -87,3 +95,4 @@ def reset_password(token, password):
     BlacklistedToken.objects.bulk_create(
         [BlacklistedToken(token=token) for token in active], ignore_conflicts=True
     )
+    return user
