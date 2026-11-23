@@ -152,9 +152,7 @@ export function UploadPage() {
           type="file"
           multiple
           accept={ACCEPTED_FILES}
-          className="sr-only"
-          tabIndex={-1}
-          aria-label="Elegir archivos de video"
+          className="hidden"
           disabled={blocked}
           onChange={(event) => {
             addFiles(event.target.files);
