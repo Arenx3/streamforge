@@ -18,7 +18,7 @@ SAMPLE_TIMEOUT_SECONDS = 180
 def build_sample_command(target):
     picture = (
         f"gradients=s=1920x1080:c0=0x170c10:c1=0x6e1a2b:c2=0xe8b45a:c3=0x2a0d15"
-        f":n=4:speed=0.015:r=30:d={SAMPLE_SECONDS},noise=c0s=3:c0f=u,format=yuv420p"
+        f":n=4:speed=0.012:r=30:d={SAMPLE_SECONDS}:type=linear:seed=7,vignette=PI/4,format=yuv420p"
     )
     tone = (
         "aevalsrc=0.07*sin(2*PI*220*t)+0.05*sin(2*PI*277.18*t)+0.05*sin(2*PI*329.63*t)"
@@ -44,7 +44,7 @@ def build_sample_command(target):
         "-preset",
         "veryfast",
         "-crf",
-        "24",
+        "20",
         "-c:a",
         "aac",
         "-shortest",
