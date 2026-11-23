@@ -13,7 +13,7 @@ s3api() { aws --endpoint-url "$AWS_S3_ENDPOINT_URL" s3api "$@"; }
 attempt=0
 until s3api list-buckets >/dev/null 2>&1; do
   attempt=$((attempt + 1))
-  if [ "$attempt" -ge 30 ]; then
+  if [ "$attempt" -ge 90 ]; then
     echo "[storage-init] S3 server not reachable after $attempt attempts" >&2
     exit 1
   fi
