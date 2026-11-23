@@ -16,6 +16,7 @@ import {
 import { UploadDock, UploadPage, UploadWatcher } from "./features/upload/UploadPage";
 import { LibraryPage } from "./features/videos/LibraryPage";
 import { LiveUpdates } from "./features/videos/LiveUpdates";
+import { VideoPage } from "./features/videos/VideoPage";
 import { NotFound } from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -51,7 +52,7 @@ export function App() {
               <Route element={<AppLayout />}>
                 <Route index element={<LibraryPage />} />
                 <Route path="upload" element={<UploadPage />} />
-                <Route path="videos/:id" element={<LibraryPage />} />
+                <Route path="videos/:id" element={<VideoPage />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />

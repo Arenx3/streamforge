@@ -190,6 +190,109 @@
   }
 }
 
+/* Video controls: the timeline is the same punched line as the progress meter. */
+.player-controls {
+  background: linear-gradient(to top, rgb(10 4 6 / 0.88), transparent);
+  transition: opacity 180ms var(--ease-out);
+}
+
+.player[data-controls="false"] .player-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-track {
+  position: absolute;
+  inset-inline: 0;
+  top: 7px;
+  height: 6px;
+  background: linear-gradient(
+    to right,
+    var(--color-brass) var(--played),
+    rgb(255 255 255 / 0.55) var(--played) var(--buffered),
+    rgb(255 255 255 / 0.22) var(--buffered)
+  );
+  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / 9px 6px repeat-x;
+}
+
+.player-range,
+.player-volume {
+  appearance: none;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.player-range::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+.player-range::-moz-range-track {
+  background: transparent;
+}
+
+.player-volume::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--color-bone) var(--value),
+    rgb(255 255 255 / 0.28) var(--value)
+  );
+}
+
+.player-volume::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--color-bone) var(--value),
+    rgb(255 255 255 / 0.28) var(--value)
+  );
+}
+
+.player-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: var(--color-brass-bright);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.6);
+}
+
+.player-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-brass-bright);
+}
+
+.player-volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--color-bone);
+}
+
+.player-volume::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-bone);
+}
+
+.player-select option {
+  background: var(--color-raised);
+  color: var(--color-bone);
+}
+
 @keyframes skeleton {
   50% {
     opacity: 0.45;

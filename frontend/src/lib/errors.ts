@@ -18,6 +18,19 @@ const TRANSLATIONS: [RegExp, string][] = [
   [/could not be deleted/i, "No se pudo borrar el video. Inténtalo de nuevo."],
   [/not been uploaded yet/i, "Faltan partes del archivo por subir."],
   [/failed or was abandoned/i, "Esta subida falló o fue abandonada."],
+  [/abandoned before/i, "La subida se abandonó antes de terminar."],
+  [/not a supported video/i, "El archivo no es un video compatible."],
+  [/no video stream/i, "El archivo no tiene pista de video."],
+  [/could not be analyzed/i, "No se pudo analizar el archivo."],
+  [/resolution is not supported/i, "La resolución del video no es compatible."],
+  [/duration could not/i, "No se pudo determinar la duración del video."],
+  [/longer than the allowed/i, "El video supera la duración máxima."],
+  [/took too long/i, "El procesamiento tardó demasiado y se detuvo."],
+  [/ffmpeg could not/i, "FFmpeg no pudo procesar este archivo."],
+  [/temporary disk space/i, "No hay espacio en disco para procesar este video."],
+  [/storage was unavailable/i, "El almacenamiento no respondió durante el proceso."],
+  [/kept crashing/i, "El procesamiento falló varias veces y se detuvo."],
+  [/processing failed/i, "El procesamiento falló."],
 ];
 
 const GENERIC = "Algo salió mal. Inténtalo de nuevo.";
