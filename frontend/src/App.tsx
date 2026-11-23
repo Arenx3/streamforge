@@ -15,6 +15,7 @@ import {
 } from "./features/auth/pages";
 import { UploadDock, UploadPage, UploadWatcher } from "./features/upload/UploadPage";
 import { LibraryPage } from "./features/videos/LibraryPage";
+import { LiveUpdates } from "./features/videos/LiveUpdates";
 import { NotFound } from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ function AppLayout() {
     <AppShell account={<AccountMenu />}>
       <UnverifiedBanner />
       <Outlet />
+      <LiveUpdates />
       <UploadWatcher />
       <UploadDock />
     </AppShell>

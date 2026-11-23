@@ -2,8 +2,10 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
+
+from videos.events import publish_video_event
 
 
 class InvalidTransition(Exception):
@@ -150,6 +152,7 @@ class Video(models.Model):
         if not self.can_transition_to(target):
             raise InvalidTransition(f"Cannot move video from {self.status} to {target}")
         self._save_if_status_unchanged(status=target, **changes)
+        transaction.on_commit(lambda: publish_video_event(self, "state"))
 
     def _save_if_status_unchanged(self, **changes):
         """Write `changes` only if the row still has this instance's status and attempt.

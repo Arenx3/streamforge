@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
+import { useLiveConnection } from "./liveEvents";
 
 export type VideoStatus = "PENDING_UPLOAD" | "UPLOADED" | "PROCESSING" | "READY" | "FAILED";
 
@@ -44,6 +45,8 @@ export const FILTERS = [
 export type VideoFilter = (typeof FILTERS)[number];
 
 export const PAGE_SIZE = 20;
+/** Only used while the live connection is down. */
+const POLL_MS = 3000;
 export const isProcessing = (video: Pick<Video, "status">) =>
   video.status === "UPLOADED" || video.status === "PROCESSING";
 
@@ -58,31 +61,36 @@ export const countFor = (filter: VideoFilter, summary: VideoSummary | undefined)
 export function useVideos(filter: VideoFilter, page: number) {
   const search = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
   if (filter.statuses.length) search.set("status", filter.statuses.join(","));
+  const live = useLiveConnection();
   return useQuery({
     queryKey: ["videos", "list", filter.id, page],
     queryFn: ({ signal }) => api<Page<Video>>(`/videos/?${search}`, { signal }),
     placeholderData: keepPreviousData,
-    refetchInterval: (query) => (query.state.data?.results.some(isProcessing) ? 3000 : false),
+    refetchInterval: (query) =>
+      !live && query.state.data?.results.some(isProcessing) ? POLL_MS : false,
   });
 }
 
 export function useVideoSummary() {
+  const live = useLiveConnection();
   return useQuery({
     queryKey: ["videos", "summary"],
     queryFn: ({ signal }) => api<VideoSummary>("/videos/summary/", { signal }),
     refetchInterval: (query) => {
       const data = query.state.data;
-      return data && data.UPLOADED + data.PROCESSING > 0 ? 3000 : false;
+      return !live && data && data.UPLOADED + data.PROCESSING > 0 ? POLL_MS : false;
     },
   });
 }
 
 export function useVideo(id: string) {
+  const live = useLiveConnection();
   return useQuery({
     queryKey: ["videos", "detail", id],
     queryFn: ({ signal }) => api<VideoDetail>(`/videos/${id}/`, { signal }),
     retry: false,
-    refetchInterval: (query) => (query.state.data && isProcessing(query.state.data) ? 3000 : false),
+    refetchInterval: (query) =>
+      !live && query.state.data && isProcessing(query.state.data) ? POLL_MS : false,
   });
 }
 

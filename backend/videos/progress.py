@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.db import DatabaseError, close_old_connections
 from redis.exceptions import RedisError
 
+from videos.events import publish_video_event
 from videos.models import Video
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class ProgressReporter:
             cache.set(_live_key(self.video.pk), percent, LIVE_TTL_SECONDS)
         except RedisError:
             logger.warning("Could not publish progress of video %s", self.video.pk)
+        publish_video_event(self.video, "progress", progress=percent)
 
     def _persist(self, percent):
         try:

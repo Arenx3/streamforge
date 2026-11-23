@@ -201,6 +201,33 @@ services:
       timeout: 3s
       retries: 10
 
+  # Long-lived SSE connections, kept away from the API's request workers.
+  events:
+    <<: *backend-env
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --worker-class gthread
+      --workers 1
+      --threads ${EVENTS_THREADS:-64}
+      --timeout 60
+      --graceful-timeout 5
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health/', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # Gateway: serves the React build and proxies the API.
   nginx:
     build:
@@ -213,6 +240,8 @@ services:
       - "${BIND_ADDRESS:-127.0.0.1}:${NGINX_PORT:-80}:80"
     depends_on:
       backend:
+        condition: service_healthy
+      events:
         condition: service_healthy
 
 volumes:
