@@ -16,6 +16,7 @@ const TRANSLATIONS: [RegExp, string][] = [
   [/storage is temporarily/i, "El almacenamiento no responde. Inténtalo de nuevo."],
   [/processing could not be started/i, "No se pudo iniciar el procesamiento. Inténtalo de nuevo."],
   [/could not be deleted/i, "No se pudo borrar el video. Inténtalo de nuevo."],
+  [/only a ready video/i, "Solo un video listo se puede compartir."],
   [/not been uploaded yet/i, "Faltan partes del archivo por subir."],
   [/failed or was abandoned/i, "Esta subida falló o fue abandonada."],
   [/abandoned before/i, "La subida se abandonó antes de terminar."],

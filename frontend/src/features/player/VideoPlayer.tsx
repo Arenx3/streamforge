@@ -267,7 +267,7 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
       onMouseLeave={() => playing && setControlsVisible(false)}
       onFocus={revealControls}
       data-controls={showControls}
-      className={`player group relative aspect-video max-h-dvh w-full overflow-hidden bg-black -outline-offset-2 ${
+      className={`player group relative aspect-video max-h-[calc(100dvh-var(--player-offset,0px))] w-full overflow-hidden bg-black -outline-offset-2 ${
         showControls ? "" : "cursor-none"
       }`}
     >

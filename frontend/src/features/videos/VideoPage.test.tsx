@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +34,7 @@ const detail = (overrides: Partial<VideoDetail>): VideoDetail => ({
   error_message: "",
   processed_at: null,
   playback_url: "http://localhost/api/playback/token/master.m3u8",
+  share_token: null,
   ...overrides,
 });
 
@@ -126,6 +127,63 @@ describe("VideoPage", () => {
 
     await screen.findByRole("heading", { name: "Demo de producto" });
     expect(screen.getByTestId("rail")).toHaveTextContent(rail);
+  });
+
+  describe("public link", () => {
+    const answer = (shared: boolean) =>
+      fetchMock.mockImplementation(async (_input, init) => {
+        if (init?.method === "POST") return json(200, detail({ share_token: "tok" }));
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        return json(200, detail({ share_token: shared ? "tok" : null }));
+      });
+    const button = (name: string) => screen.findByRole("button", { name, hidden: true });
+
+    it("creates a link and shows it", async () => {
+      answer(false);
+      renderPage();
+
+      fireEvent.click(await button("Compartir"));
+      fireEvent.click(await button("Crear enlace"));
+
+      expect(await screen.findByLabelText("Enlace público")).toHaveValue(
+        `${window.location.origin}/v/tok`,
+      );
+      expect(await button("Compartido")).toBeInTheDocument();
+    });
+
+    it("copies the link", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", Object.assign(Object.create(navigator), { clipboard: { writeText } }));
+      answer(true);
+      renderPage();
+
+      fireEvent.click(await button("Compartido"));
+      fireEvent.click(await button("Copiar"));
+
+      expect(await button("Copiado")).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/v/tok`);
+    });
+
+    it("turns the link off", async () => {
+      answer(true);
+      renderPage();
+
+      fireEvent.click(await button("Compartido"));
+      fireEvent.click(await button("Desactivar enlace"));
+
+      expect(await button("Crear enlace")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Enlace público")).not.toBeInTheDocument();
+    });
+
+    it("is not offered before the video is ready", async () => {
+      fetchMock.mockResolvedValue(
+        json(200, detail({ status: "PROCESSING", progress: 47, playback_url: null })),
+      );
+      renderPage();
+
+      await screen.findByText("47 %");
+      expect(screen.queryByRole("button", { name: "Compartir" })).not.toBeInTheDocument();
+    });
   });
 });
 

@@ -1,12 +1,20 @@
-import { useId, type FormEvent } from "react";
+import { Check, Copy, ExternalLink } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { Button } from "../../components/ui/Button";
+import { Button, buttonClass } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
 import { Field, inputClass } from "../../components/ui/Field";
 import { Notice } from "../../components/ui/Notice";
 import { errorMessage, fieldErrors } from "../../lib/errors";
-import { useDeleteVideo, useUpdateVideo, type Video } from "./api";
+import {
+  shareUrl,
+  useDeleteVideo,
+  useUpdateVideo,
+  useVideoSharing,
+  type Video,
+  type VideoDetail,
+} from "./api";
 
 type Props = { video: Video; onClose: () => void; onDeleted?: () => void };
 
@@ -73,6 +81,103 @@ export function EditVideoDialog({ video, onClose }: Props) {
           </Button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+const COPIED_MS = 1600;
+
+async function copyText(text: string, field: HTMLInputElement | null) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Outside HTTPS and localhost the browser has no clipboard API.
+    field?.select();
+    return document.execCommand("copy");
+  }
+}
+
+export function ShareVideoDialog({ video, onClose }: { video: VideoDetail; onClose: () => void }) {
+  const { create, revoke } = useVideoSharing(video.id);
+  const field = useRef<HTMLInputElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const url = video.share_token ? shareUrl(video.share_token) : null;
+  const failure = create.error ?? revoke.error;
+  const name = <strong className="text-bone font-semibold break-words">{video.title}</strong>;
+
+  const copy = async () => {
+    if (!url) return;
+    if (!(await copyText(url, field.current))) {
+      toast.error("No se pudo copiar. Selecciona el enlace y cópialo.");
+      return;
+    }
+    setCopied(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), COPIED_MS);
+  };
+
+  return (
+    <Dialog title="Compartir video" onClose={onClose}>
+      {failure && (
+        <Notice tone="error" className="mb-4">
+          {errorMessage(failure)}
+        </Notice>
+      )}
+      {url ? (
+        <>
+          <p className="text-bone-soft">Cualquiera con este enlace puede ver {name} sin crear una cuenta.</p>
+          <div className="mt-4 flex gap-2">
+            <input
+              ref={field}
+              readOnly
+              aria-label="Enlace público"
+              value={url}
+              onFocus={(event) => event.currentTarget.select()}
+              className={`${inputClass} tabular min-w-0 flex-1`}
+            />
+            <Button className="min-w-[108px]" onClick={() => void copy()}>
+              {copied ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
+              {copied ? "Copiado" : "Copiar"}
+            </Button>
+          </div>
+          <p className="text-muted mt-2 text-[13px]">
+            Si lo desactivas deja de abrir al instante. Quien ya lo esté viendo puede seguir hasta una hora.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-between gap-2">
+            <Button
+              variant="ghost"
+              loading={revoke.isPending}
+              onClick={() =>
+                revoke.mutate(undefined, { onSuccess: () => toast.success("Enlace desactivado") })
+              }
+            >
+              Desactivar enlace
+            </Button>
+            <a href={url} target="_blank" rel="noopener" className={buttonClass("secondary")}>
+              Abrir enlace
+              <ExternalLink aria-hidden className="size-3.5" />
+            </a>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-bone-soft">
+            Crea un enlace público para {name}. Quien lo tenga podrá verlo sin crear una cuenta.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button loading={create.isPending} onClick={() => create.mutate()}>
+              Crear enlace
+            </Button>
+          </div>
+        </>
+      )}
     </Dialog>
   );
 }
