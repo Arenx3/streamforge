@@ -348,7 +348,7 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
               onClick={togglePlay}
               className="group/start absolute inset-0 grid cursor-pointer place-items-center bg-black/25"
             >
-              <span className="press bg-brass text-brass-ink shadow-float group-hover/start:bg-brass-bright grid size-16 place-items-center rounded-full group-active/start:scale-[0.97]">
+              <span className="press bg-brass text-brass-ink shadow-float group-hover/start:bg-brass-bright grid size-16 place-items-center rounded-full motion-safe:group-active/start:[transform:scale(0.97)]">
                 <Play aria-hidden className="ml-0.5 size-7 fill-current" />
               </span>
             </button>

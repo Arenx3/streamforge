@@ -104,6 +104,7 @@
 @utility press {
   transition:
     transform var(--motion),
+    filter var(--motion),
     background-color var(--motion),
     border-color var(--motion),
     color var(--motion);
