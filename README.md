@@ -51,7 +51,7 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 
 ## Requisitos
 
-- Docker Desktop (o Docker Engine + Compose v2)
+- Docker Desktop (o Docker Engine + Compose 2.24 o superior)
 - En Windows: WSL 2 habilitado
 
 ## Puesta en marcha
@@ -59,9 +59,10 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 ```bash
 git clone https://github.com/Arenx3/streamforge.git
 cd streamforge
-cp .env.example .env        # completa los valores marcados como change-me
-docker compose up --build
+docker compose up -d --build
 ```
+
+Eso es todo: no necesitas crear `.env`, abrir cuentas ni pagar un dominio. El primer arranque construye las imágenes y tarda unos minutos. Los correos no salen a internet, llegan a una bandeja local.
 
 Verifica que todo esté sano:
 
@@ -75,6 +76,7 @@ docker compose exec worker celery -A config call core.ping
 | URL                           | Qué es                    |
 |-------------------------------|---------------------------|
 | http://localhost/api/health/  | Health check del stack    |
+| http://localhost/api/docs/    | API interactiva (Swagger) |
 | http://localhost/api/auth/    | Autenticación (JWT)       |
 | http://localhost/admin/       | Django admin              |
 | http://localhost:9001         | Consola de RustFS (S3)    |
@@ -85,6 +87,15 @@ Crear un superusuario:
 ```bash
 docker compose exec backend python manage.py createsuperuser
 ```
+
+### Probar el flujo de cuenta
+
+1. Abre http://localhost/api/docs/ y crea una cuenta en `POST /api/auth/register/`.
+2. Abre http://localhost:8025, entra al correo y copia lo que aparece después de `#token=` en el enlace.
+3. Inicia sesión en `POST /api/auth/token/` y pega el `access` en **Authorize**.
+4. Confirma la cuenta en `POST /api/auth/email/verify/` con ese token.
+
+Para apagar todo usa `docker compose down`. Para borrar también los datos, `docker compose down -v`.
 
 ## Autenticación
 
@@ -162,9 +173,10 @@ Documentación interactiva en http://localhost/api/docs/ (se desactiva con `API_
 
 ## Variables de entorno
 
-Todas las credenciales y configuración viven en `.env` (nunca se versiona). `.env.example` documenta cada variable. Puntos clave:
+El proyecto funciona sin `.env`: `.env.example` trae valores para uso local. Si creas un `.env`, sus valores tienen prioridad y nunca se versiona. Puntos clave:
 
-- `DJANGO_SECRET_KEY`: genera uno con `python -c "import secrets; print(secrets.token_urlsafe(50))"`. Firma los tokens JWT, así que la app no arranca con el valor `change-me`.
+- `DJANGO_SECRET_KEY`: si está vacía, Docker genera una aleatoria en el primer arranque y la guarda en un volumen. Define la tuya en cualquier despliegue real.
+- `BIND_ADDRESS`: por defecto los puertos solo son accesibles desde tu máquina (`127.0.0.1`). Ábrelos a la red solo con credenciales propias.
 - `TRUSTED_PROXY_COUNT`: proxies delante de Django (1 = nginx, 2 = CDN + nginx). Si es incorrecto, el rate limit se puede evadir o termina bloqueando a todos a la vez.
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: en local también son las credenciales del servidor RustFS (consola en el puerto `STORAGE_CONSOLE_PORT`).
 - `NGINX_PORT`: cámbialo si el puerto 80 está ocupado.
