@@ -8,7 +8,7 @@ const STATES: Record<
   { label: string; icon: typeof Clock3; color: string; spin?: boolean; tone: PerforationTone }
 > = {
   PENDING_UPLOAD: { label: "Sin terminar", icon: UploadCloud, color: "text-muted", tone: "idle" },
-  UPLOADED: { label: "En cola", icon: Clock3, color: "text-brass-bright", tone: "live" },
+  UPLOADED: { label: "En cola", icon: Clock3, color: "text-bone-soft", tone: "idle" },
   PROCESSING: {
     label: "Procesando",
     icon: LoaderCircle,
