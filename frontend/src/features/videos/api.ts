@@ -31,7 +31,15 @@ export type VideoDetail = Video & {
   error_message: string;
   processed_at: string | null;
   playback_url: string | null;
+  share_token: string | null;
 };
+
+export type SharedVideo = Pick<
+  Video,
+  "title" | "description" | "duration_seconds" | "width" | "height" | "thumbnail_url"
+> & { playback_url: string | null };
+
+export const shareUrl = (token: string) => `${window.location.origin}/v/${token}`;
 
 export type Page<T> = { count: number; next: string | null; previous: string | null; results: T[] };
 export type VideoSummary = Record<VideoStatus, number>;
@@ -107,6 +115,31 @@ export function useShowsPlayer() {
     select: (video) => video.status === "READY" && Boolean(video.playback_url),
   });
   return data;
+}
+
+/** A public link needs no session, and a stale one must not get in its way. */
+export function useSharedVideo(token: string) {
+  return useQuery({
+    queryKey: ["shared", token],
+    queryFn: ({ signal }) =>
+      api<SharedVideo>(`/public/videos/${encodeURIComponent(token)}/`, { signal, auth: false }),
+    retry: false,
+  });
+}
+
+export function useVideoSharing(id: string) {
+  const client = useQueryClient();
+  const key = ["videos", "detail", id];
+  const create = useMutation({
+    mutationFn: () => api<VideoDetail>(`/videos/${id}/share/`, { method: "POST" }),
+    onSuccess: (video) => client.setQueryData(key, video),
+  });
+  const revoke = useMutation({
+    mutationFn: () => api<void>(`/videos/${id}/share/`, { method: "DELETE" }),
+    onSuccess: () =>
+      client.setQueryData<VideoDetail>(key, (video) => video && { ...video, share_token: null }),
+  });
+  return { create, revoke };
 }
 
 export function useUpdateVideo() {

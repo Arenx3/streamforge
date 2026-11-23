@@ -1,4 +1,4 @@
-import { ArrowLeft, Pencil, Trash2, UploadCloud } from "lucide-react";
+import { ArrowLeft, Pencil, Share2, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -9,7 +9,7 @@ import { errorMessage, translate } from "../../lib/errors";
 import { formatBytes, formatDuration, formatQuality } from "../../lib/format";
 import { VideoPlayer } from "../player/VideoPlayer";
 import { useVideo, type VideoDetail } from "./api";
-import { DeleteVideoDialog, EditVideoDialog } from "./VideoDialogs";
+import { DeleteVideoDialog, EditVideoDialog, ShareVideoDialog } from "./VideoDialogs";
 import { serialOf, videoJourney, VideoTicket } from "./VideoTicket";
 
 const backLink =
@@ -89,7 +89,7 @@ export function VideoPage() {
   const navigate = useNavigate();
   const query = useVideo(id);
   const refetch = query.refetch;
-  const [dialog, setDialog] = useState<"edit" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"edit" | "delete" | "share" | null>(null);
   // Each response signs a new link: the player keeps the first and asks when it expires.
   const [firstUrl, setFirstUrl] = useState<{ id: string; url: string } | null>(null);
   const playbackUrl = query.data?.id === id ? query.data.playback_url : null;
@@ -142,6 +142,7 @@ export function VideoPage() {
   const dialogs = (
     <>
       {dialog === "edit" && <EditVideoDialog video={video} onClose={() => setDialog(null)} />}
+      {dialog === "share" && <ShareVideoDialog video={video} onClose={() => setDialog(null)} />}
       {dialog === "delete" && (
         <DeleteVideoDialog
           video={video}
@@ -194,6 +195,14 @@ export function VideoPage() {
               <ArrowLeft aria-hidden className="size-3.5" />
               Biblioteca
             </Link>
+            <Button
+              variant={video.share_token ? "secondary" : "primary"}
+              size="sm"
+              onClick={() => setDialog("share")}
+            >
+              <Share2 aria-hidden className="size-3.5" />
+              {video.share_token ? "Compartido" : "Compartir"}
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setDialog("edit")}>
               <Pencil aria-hidden className="size-3.5" />
               Editar

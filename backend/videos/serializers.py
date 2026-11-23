@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from core.storage import s3_public_client
 from videos.models import Video
-from videos.playback import playback_url, presigned_get
+from videos.playback import playback_url, presigned_get, shared_playback_url
 from videos.progress import live_progress
 
 
@@ -45,11 +45,47 @@ class VideoDetailSerializer(VideoSerializer):
     playback_url = serializers.SerializerMethodField()
 
     class Meta(VideoSerializer.Meta):
-        fields = [*VideoSerializer.Meta.fields, "error_message", "processed_at", "playback_url"]
+        fields = [
+            *VideoSerializer.Meta.fields,
+            "error_message",
+            "processed_at",
+            "playback_url",
+            "share_token",
+        ]
         read_only_fields = fields
 
     def get_playback_url(self, video) -> str | None:
         return playback_url(self.context["request"], video)
+
+
+class SharedVideoSerializer(serializers.ModelSerializer):
+    """What anyone with the link can see: nothing about the owner."""
+
+    thumbnail_url = serializers.SerializerMethodField()
+    playback_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Video
+        fields = [
+            "title",
+            "description",
+            "duration_seconds",
+            "width",
+            "height",
+            "thumbnail_url",
+            "playback_url",
+        ]
+        read_only_fields = fields
+
+    def get_thumbnail_url(self, video) -> str | None:
+        if not video.thumbnail_key:
+            return None
+        return presigned_get(
+            s3_public_client(), video.thumbnail_key, settings.VIDEO_SHARE_URL_EXPIRES
+        )
+
+    def get_playback_url(self, video) -> str | None:
+        return shared_playback_url(self.context["request"], video)
 
 
 class VideoUpdateSerializer(serializers.ModelSerializer):

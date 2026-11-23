@@ -46,11 +46,31 @@ def playback_url(request, video):
     return request.build_absolute_uri(path)
 
 
-def presigned_get(s3, key):
+def _share_signer():
+    return signing.TimestampSigner(salt="videos.share-playback", sep=".")
+
+
+def read_share_playback_token(token):
+    """Return the video's share token, or None if the link is forged or expired."""
+    try:
+        return _share_signer().unsign(token, max_age=settings.VIDEO_SHARE_URL_EXPIRES)
+    except signing.BadSignature:
+        return None
+
+
+def shared_playback_url(request, video):
+    """A playback link that carries the share token, so revoking the share rejects it."""
+    if not video.hls_master_key:
+        return None
+    path = reverse("shared-playlist-master", args=[_share_signer().sign(video.share_token)])
+    return request.build_absolute_uri(path)
+
+
+def presigned_get(s3, key, expires=None):
     return s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.AWS_STORAGE_BUCKET_NAME, "Key": key},
-        ExpiresIn=settings.VIDEO_PLAYBACK_URL_EXPIRES,
+        ExpiresIn=expires or settings.VIDEO_PLAYBACK_URL_EXPIRES,
     )
 
 
@@ -58,7 +78,7 @@ def master_playlist(video):
     return _read_playlist(video.hls_master_key)
 
 
-def rendition_playlist(video, rendition):
+def rendition_playlist(video, rendition, expires=None):
     """The rendition's playlist, with every segment replaced by a presigned URL."""
     if not _RENDITION.fullmatch(rendition):
         raise PlaylistNotFound(rendition)
@@ -66,7 +86,7 @@ def rendition_playlist(video, rendition):
     body = _read_playlist(f"{folder}/index.m3u8")
     s3 = s3_public_client()
     lines = [
-        presigned_get(s3, f"{folder}/{line}") if _SEGMENT.fullmatch(line) else line
+        presigned_get(s3, f"{folder}/{line}", expires) if _SEGMENT.fullmatch(line) else line
         for line in body.splitlines()
     ]
     return "\n".join(lines) + "\n"

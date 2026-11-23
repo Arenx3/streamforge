@@ -183,6 +183,8 @@ VIDEO_MAX_DURATION_SECONDS = int(env("VIDEO_MAX_DURATION_SECONDS", str(4 * 3600)
 VIDEO_TRANSCODE_MAX_SECONDS = int(env("VIDEO_TRANSCODE_MAX_SECONDS", str(6 * 3600)))
 # Lifetime of playback links; must outlast the longest video being watched.
 VIDEO_PLAYBACK_URL_EXPIRES = int(env("VIDEO_PLAYBACK_URL_EXPIRES", str(6 * 3600)))
+# Public links travel further, so theirs last less; the player renews them on its own.
+VIDEO_SHARE_URL_EXPIRES = int(env("VIDEO_SHARE_URL_EXPIRES", "3600"))
 # A run without a heartbeat for this long is considered dead and gets restarted.
 # Never below three missed heartbeats (30 s each), or live runs would look dead.
 VIDEO_STUCK_AFTER_SECONDS = max(int(env("VIDEO_STUCK_AFTER_SECONDS", "180")), 90)
@@ -204,6 +206,7 @@ REST_FRAMEWORK = {
         "auth_email_resend": env("THROTTLE_RATE_EMAIL_RESEND", "5/hour"),
         "auth_password_reset": env("THROTTLE_RATE_PASSWORD_RESET", "5/hour"),
         "auth_password_confirm": env("THROTTLE_RATE_PASSWORD_CONFIRM", "10/hour"),
+        "video_share": env("THROTTLE_RATE_VIDEO_SHARE", "120/minute"),
     },
     # Reverse proxies in front of Django. Rate limits read the client IP from the
     # entry they appended to X-Forwarded-For, so clients cannot spoof it.

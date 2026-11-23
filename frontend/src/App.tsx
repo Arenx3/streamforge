@@ -17,6 +17,7 @@ import { UploadDock, UploadPage, UploadWatcher } from "./features/upload/UploadP
 import { useShowsPlayer } from "./features/videos/api";
 import { LibraryPage } from "./features/videos/LibraryPage";
 import { LiveUpdates } from "./features/videos/LiveUpdates";
+import { SharedVideoPage } from "./features/videos/SharedVideoPage";
 import { VideoPage } from "./features/videos/VideoPage";
 import { NotFound } from "./pages/NotFound";
 
@@ -51,6 +52,7 @@ export function App() {
             </Route>
             <Route path="reset-password" element={<ResetPasswordPage />} />
             <Route path="verify-email" element={<VerifyEmailPage />} />
+            <Route path="v/:token" element={<SharedVideoPage />} />
             <Route element={<RequireAuth />}>
               <Route element={<AppLayout />}>
                 <Route index element={<LibraryPage />} />

@@ -2,6 +2,7 @@ import logging
 from contextlib import contextmanager
 
 from botocore.exceptions import BotoCoreError, ClientError
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count
 from django.http import HttpResponse
@@ -11,8 +12,11 @@ from kombu.exceptions import OperationalError as BrokerError
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.generics import RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from accounts.permissions import IsEmailVerified
 from core.storage import STORAGE_ERRORS
@@ -22,10 +26,12 @@ from videos.playback import (
     PlaylistNotFound,
     master_playlist,
     read_playback_token,
+    read_share_playback_token,
     rendition_playlist,
 )
 from videos.progress import live_progress
 from videos.serializers import (
+    SharedVideoSerializer,
     VideoCreatedSerializer,
     VideoCreateSerializer,
     VideoDetailSerializer,
@@ -58,6 +64,12 @@ class ProcessingUnavailable(APIException):
     default_code = "processing_unavailable"
 
 
+class ShareConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Only a ready video can be shared."
+    default_code = "share_conflict"
+
+
 @contextmanager
 def storage_errors_as_503():
     try:
@@ -81,6 +93,21 @@ class VideoPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class PublicVideoThrottle(SimpleRateThrottle):
+    """One budget per client across the public page and its playlists."""
+
+    scope = "video_share"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
+def public_videos():
+    return Video.objects.filter(
+        status=Video.Status.READY, share_token__isnull=False, owner__is_active=True
+    )
+
+
 @require_safe
 def playlist(request, token, rendition=None):
     """Serve an HLS playlist to whoever holds a valid playback token."""
@@ -90,8 +117,29 @@ def playlist(request, token, rendition=None):
     video = Video.objects.filter(pk=video_id, status=Video.Status.READY).first()
     if video is None:
         return HttpResponse(status=404)
+    return _playlist_response(video, rendition)
+
+
+@require_safe
+def shared_playlist(request, token, rendition=None):
+    """Serve a public link's playlists; once it is revoked they are rejected."""
+    if not PublicVideoThrottle().allow_request(request, None):
+        return HttpResponse(status=429)
+    share_token = read_share_playback_token(token)
+    video = public_videos().filter(share_token=share_token).first() if share_token else None
+    if video is None:
+        # 403 makes the player ask the public page, which then says the link is gone.
+        return HttpResponse(status=403)
+    response = _playlist_response(video, rendition, settings.VIDEO_SHARE_URL_EXPIRES)
+    response["X-Robots-Tag"] = "noindex"
+    return response
+
+
+def _playlist_response(video, rendition, expires=None):
     try:
-        body = rendition_playlist(video, rendition) if rendition else master_playlist(video)
+        body = (
+            rendition_playlist(video, rendition, expires) if rendition else master_playlist(video)
+        )
     except PlaylistNotFound:
         return HttpResponse(status=404)
     except STORAGE_ERRORS:
@@ -100,6 +148,25 @@ def playlist(request, token, rendition=None):
     response = HttpResponse(body, content_type="application/vnd.apple.mpegurl")
     response["Cache-Control"] = "no-store"  # It carries presigned URLs.
     return response
+
+
+@extend_schema(summary="Get a video through its public link", auth=[])
+class SharedVideoView(RetrieveAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicVideoThrottle]
+    serializer_class = SharedVideoSerializer
+    lookup_field = "share_token"
+    lookup_url_kwarg = "token"
+
+    def get_queryset(self):
+        return public_videos()
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        response["Cache-Control"] = "no-store"  # It carries signed links.
+        response["X-Robots-Tag"] = "noindex"
+        return response
 
 
 @extend_schema_view(
@@ -152,7 +219,7 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
     def get_permissions(self):
         permissions = super().get_permissions()
-        if self.action == "create":
+        if self.action in {"create", "share"}:
             permissions.append(IsEmailVerified())
         return permissions
 
@@ -217,6 +284,29 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if video.status == Video.Status.UPLOADED:
             enqueue_transcode(video)
         return Response(VideoSerializer(video).data)
+
+    @extend_schema(
+        methods=["post"],
+        summary="Create the public link, or return the existing one",
+        request=None,
+        responses=VideoDetailSerializer,
+    )
+    @extend_schema(
+        methods=["delete"],
+        summary="Turn off the public link",
+        request=None,
+        responses={204: None},
+    )
+    @action(detail=True, methods=["post", "delete"])
+    def share(self, request, pk=None):
+        video = self.get_object()
+        if request.method == "DELETE":
+            video.disable_sharing()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        if video.status != Video.Status.READY:
+            raise ShareConflict
+        video.enable_sharing()
+        return Response(self.get_serializer(video).data)
 
     @action(detail=False, methods=["get"])
     def summary(self, request):

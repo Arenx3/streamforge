@@ -56,6 +56,7 @@ describe("applyVideoEvent", () => {
       error_message: "",
       processed_at: null,
       playback_url: null,
+      share_token: null,
     });
     return { client, invalidate: vi.spyOn(client, "invalidateQueries") };
   }
