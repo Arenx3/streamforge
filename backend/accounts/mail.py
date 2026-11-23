@@ -60,6 +60,18 @@ def send_password_reset(user):
     )
 
 
+def send_password_changed(user):
+    _send(
+        user,
+        subject="Tu contraseña de StreamForge cambió",
+        heading="Tu contraseña cambió",
+        body="La contraseña de tu cuenta se actualizó y todas las sesiones se cerraron.",
+        action="Restablecer contraseña",
+        url=_link("forgot-password"),
+        note="Si fuiste tú, no hace falta hacer nada. Si no, restablécela y protege tu correo.",
+    )
+
+
 def send_account_exists(user):
     _send(
         user,
