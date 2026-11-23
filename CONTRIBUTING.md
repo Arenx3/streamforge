@@ -49,7 +49,7 @@ Issue → rama → commits → Pull Request → CI en verde → squash merge
 | Job                | Qué hace                                                                   |
 |--------------------|----------------------------------------------------------------------------|
 | `Lint`             | `ruff check` y `ruff format --check`                                       |
-| `Test`             | `manage.py check`, migraciones faltantes y suite de tests con PostgreSQL   |
+| `Test`             | `manage.py check`, `check --deploy` con `.env.production.example`, migraciones faltantes y suite de tests con PostgreSQL |
 | `Stack smoke test` | Levanta todo con Docker Compose, valida `/api/health/` y una tarea del worker con FFmpeg |
 
 Corre lo mismo en local antes de abrir el PR:

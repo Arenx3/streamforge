@@ -214,6 +214,17 @@ El proyecto funciona sin `.env`: `.env.example` trae valores para uso local. Si 
 - `AWS_S3_PUBLIC_ENDPOINT_URL`: host que usa el navegador para subir. En local es `http://localhost:9000`.
 - Para producción con R2 basta con cambiar `AWS_S3_ENDPOINT_URL`, `AWS_S3_PUBLIC_ENDPOINT_URL` y las credenciales, y configurar CORS en el bucket.
 
+## Desplegar en producción
+
+El proyecto corre completo en local sin pagar nada. Publicarlo es opcional y necesita un dominio, HTTPS y un bucket.
+
+1. Copia `.env.production.example` a `.env` y reemplaza cada `change-me`.
+2. Pon delante de nginx un proxy que termine HTTPS (Caddy, Cloudflare Tunnel) y apúntalo a `127.0.0.1:80`.
+3. En el bucket, permite `GET`, `HEAD` y `PUT` desde tu dominio por CORS.
+4. Levanta el stack con `docker compose up -d --build`.
+
+Con esa configuración Django redirige a HTTPS, activa HSTS y cookies seguras, y la demo y Swagger quedan apagados. El CI comprueba estos valores con `manage.py check --deploy`. Para enviar correos reales falta un proveedor SMTP ([#45](https://github.com/Arenx3/streamforge/issues/45)).
+
 ## Estructura del repositorio
 
 ```
@@ -228,7 +239,7 @@ El proyecto funciona sin `.env`: `.env.example` trae valores para uso local. Si 
 │   └── entrypoint.sh      # migrate + collectstatic
 ├── frontend/              # React + Vite (fase 3)
 ├── storage/init-bucket.sh # bootstrap del bucket
-├── nginx/default.conf     # reverse proxy
+├── nginx/default.conf.template # reverse proxy
 └── docker-compose.yml
 ```
 
@@ -249,5 +260,6 @@ Detalles, setup de desarrollo y qué valida el CI en [CONTRIBUTING.md](CONTRIBUT
 
 - [x] **Fase 1 — Infraestructura:** Docker Compose, PostgreSQL, Redis, RustFS (S3), Django, Celery + FFmpeg, Nginx
 - [x] **Fase 2 — Pipeline de video:** modelos, subida, transcodificación HLS multi-calidad, thumbnails, estados
-- [ ] **Fase 3 — Frontend:** dashboard, subida con progreso en vivo, reproductor HLS
-- [ ] **Fase 4 — Compartir:** enlaces públicos, tests E2E con Playwright, despliegue
+- [x] **Fase 3 — Frontend:** dashboard, subida con progreso en vivo, reproductor HLS, tests E2E con Playwright
+- [x] **Fase 4 — Compartir:** enlaces públicos y configuración segura de despliegue
+- [ ] **Opcional:** proveedor de correo real para una instalación pública
