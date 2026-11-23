@@ -1,0 +1,160 @@
+@import "@fontsource/league-gothic/400.css";
+@import "@fontsource-variable/geist/index.css";
+@import "tailwindcss";
+
+@theme {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-ground: #170c10;
+  --color-raised: #21121a;
+  --color-overlay: #2c1821;
+  --color-line: #3a1d24;
+  --color-line-strong: #5a3440;
+  --color-perf: #3f232b;
+  --color-rail: #4f1422;
+  --color-rail-deep: #2a0d15;
+  --color-rail-line: #6e1a2b;
+  --color-rail-text: #ecd6d2;
+  --color-bone: #f3e9dc;
+  --color-bone-soft: #d8c6bd;
+  --color-muted: #b89e97;
+  --color-brass: #e8b45a;
+  --color-brass-bright: #f4cf85;
+  --color-brass-ink: #23110a;
+  --color-marquee: #f8dfa8;
+  --color-ok: #a9d6a0;
+  --color-danger: #ff8d7a;
+  --color-danger-deep: #4a1a1a;
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-marquee: "League Gothic", "Arial Narrow", sans-serif;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --shadow-float: 0 12px 32px -8px rgb(8 2 4 / 0.7), 0 2px 6px rgb(8 2 4 / 0.4);
+}
+
+@property --progress {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@layer base {
+  html {
+    background: var(--color-ground);
+    color: var(--color-bone);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scrollbar-color: var(--color-line-strong) transparent;
+    scrollbar-width: thin;
+    caret-color: var(--color-brass);
+  }
+
+  body {
+    min-height: 100dvh;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  ::selection {
+    background: var(--color-brass);
+    color: var(--color-brass-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brass-bright);
+    outline-offset: 2px;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
+@utility marquee {
+  font-family: var(--font-marquee);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility press {
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out);
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+
+/* A ticket's punched line. One element: the fill is a gradient cut by a dot mask. */
+.perforation {
+  --fill: var(--color-brass);
+  display: block;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(
+    to right,
+    var(--fill) var(--progress),
+    var(--color-perf) var(--progress)
+  );
+  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / 9px 6px repeat-x;
+  transition: --progress 400ms var(--ease-out);
+}
+
+.perforation[data-tone="done"] {
+  --fill: #8a7263;
+}
+
+.perforation[data-tone="failed"] {
+  --fill: var(--color-danger);
+}
+
+.perforation[data-tone="idle"] {
+  --fill: var(--color-line-strong);
+}
+
+@keyframes skeleton {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton {
+  border-radius: 4px;
+  background: var(--color-overlay);
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  .perforation {
+    transition: none;
+  }
+
+  .press:active:not(:disabled) {
+    transform: none;
+  }
+}
