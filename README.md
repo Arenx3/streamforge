@@ -112,6 +112,16 @@ npm install
 npm run dev   # http://localhost:5173
 ```
 
+### Pruebas de navegador
+
+Con el stack levantado, Playwright recorre la demo, la cuenta, la subida y el reproductor en Google Chrome:
+
+```bash
+cd frontend
+npm install
+npm run e2e
+```
+
 ## Autenticación
 
 La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
