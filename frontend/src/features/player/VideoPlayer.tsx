@@ -92,8 +92,9 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
       return;
     }
     recoveries.current += 1;
-    failedAt.current = video.currentTime;
-    resume.current = { time: video.currentTime, playing: !video.paused };
+    // Once per reload: a second failure must not overwrite the place or the intent.
+    resume.current ??= { time: video.currentTime, playing: !video.paused };
+    failedAt.current = resume.current.time;
     const next = await freshUrl.current().catch(() => null);
     if (next) setSource({ url: next });
     else setFailure("No se pudo cargar el video.");
@@ -180,6 +181,14 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
+    // Mid-reload the element cannot play yet: remember what was asked for.
+    const pending = resume.current;
+    if (pending) {
+      pending.playing = !pending.playing;
+      setPlaying(pending.playing);
+      if (pending.playing) setStarted(true);
+      return;
+    }
     if (video.paused) void video.play().catch(() => undefined);
     else video.pause();
   }, []);
@@ -284,6 +293,7 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
           revealControls();
         }}
         onPause={() => {
+          if (resume.current) return; // The reload stops the element, not the viewer.
           setPlaying(false);
           setControlsVisible(true);
         }}
@@ -302,7 +312,8 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
           if (!position) return;
           resume.current = null;
           event.currentTarget.currentTime = position.time;
-          if (position.playing) void event.currentTarget.play().catch(() => undefined);
+          setPlaying(position.playing);
+          if (position.playing) void event.currentTarget.play().catch(() => setPlaying(false));
         }}
         onProgress={(event) => {
           const ranges = event.currentTarget.buffered;
