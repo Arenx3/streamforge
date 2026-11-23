@@ -85,11 +85,7 @@ jobs:
     needs: [lint, test]
     steps:
       - uses: actions/checkout@v7
-      - name: Prepare .env
-        run: |
-          cp .env.example .env
-          sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -hex 32)|" .env
-      - name: Build and start stack
+      - name: Build and start stack from a clean checkout, without .env
         run: docker compose up -d --build
       - name: Wait for /api/health/
         run: |
