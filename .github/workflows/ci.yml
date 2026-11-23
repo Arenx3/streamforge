@@ -165,6 +165,10 @@ jobs:
           curl -fsS -X POST "$API/email/verify/" -H "Authorization: Bearer $ACCESS" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n --arg token "$EMAIL_TOKEN" '{token: $token}')" | jq -e '.email_verified == true'
+          curl -sN --max-time 170 http://localhost/api/videos/events/ \
+            -H 'Accept: text/event-stream' -H "Authorization: Bearer $ACCESS" > events.log &
+          EVENTS_PID=$!
+          sleep 1
           docker compose exec -T worker ffmpeg -nostdin -hide_banner -loglevel error \
             -f lavfi -i testsrc2=size=854x480:rate=24:duration=4 \
             -f lavfi -i sine=frequency=440:duration=4 \
@@ -198,6 +202,11 @@ jobs:
           "
           curl -fsS "http://localhost/api/videos/$VIDEO_ID/status/" \
             -H "Authorization: Bearer $ACCESS" | jq -e '.status == "READY" and .progress == 100'
+          sleep 1
+          kill "$EVENTS_PID" || true
+          grep -q 'event: ready' events.log
+          grep -q '"kind": "progress"' events.log
+          grep -q '"status": "READY"' events.log
           head -c 2048 /dev/urandom > corrupt.mp4
           BAD="$(curl -fsS -X POST http://localhost/api/videos/ \
             -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
