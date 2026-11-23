@@ -166,6 +166,30 @@
   right: -8px;
 }
 
+.sf-dialog {
+  &[open] {
+    animation: dialog-in 200ms var(--ease-out);
+  }
+
+  &::backdrop {
+    background: rgb(12 5 8 / 0.72);
+    animation: backdrop-in 200ms var(--ease-out);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes skeleton {
   50% {
     opacity: 0.45;

@@ -1,0 +1,104 @@
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import { api } from "../../lib/api";
+
+export type VideoStatus = "PENDING_UPLOAD" | "UPLOADED" | "PROCESSING" | "READY" | "FAILED";
+
+export type Video = {
+  id: string;
+  title: string;
+  description: string;
+  status: VideoStatus;
+  progress: number;
+  thumbnail_url: string | null;
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+  size_bytes: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VideoDetail = Video & {
+  error_message: string;
+  processed_at: string | null;
+  playback_url: string | null;
+};
+
+export type Page<T> = { count: number; next: string | null; previous: string | null; results: T[] };
+export type VideoSummary = Record<VideoStatus, number>;
+
+export const FILTERS = [
+  { id: "todos", label: "Todos", statuses: [] },
+  { id: "listos", label: "Listos", statuses: ["READY"] },
+  { id: "en-proceso", label: "En proceso", statuses: ["UPLOADED", "PROCESSING"] },
+  { id: "sin-terminar", label: "Sin terminar", statuses: ["PENDING_UPLOAD"] },
+  { id: "con-error", label: "Con error", statuses: ["FAILED"] },
+] as const satisfies readonly { id: string; label: string; statuses: readonly VideoStatus[] }[];
+
+export type VideoFilter = (typeof FILTERS)[number];
+
+export const PAGE_SIZE = 20;
+export const isProcessing = (video: Pick<Video, "status">) =>
+  video.status === "UPLOADED" || video.status === "PROCESSING";
+
+export const countFor = (filter: VideoFilter, summary: VideoSummary | undefined) => {
+  if (!summary) return undefined;
+  const statuses: readonly VideoStatus[] = filter.statuses.length
+    ? filter.statuses
+    : (Object.keys(summary) as VideoStatus[]);
+  return statuses.reduce((total, status) => total + summary[status], 0);
+};
+
+export function useVideos(filter: VideoFilter, page: number) {
+  const search = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+  if (filter.statuses.length) search.set("status", filter.statuses.join(","));
+  return useQuery({
+    queryKey: ["videos", "list", filter.id, page],
+    queryFn: ({ signal }) => api<Page<Video>>(`/videos/?${search}`, { signal }),
+    placeholderData: keepPreviousData,
+    refetchInterval: (query) => (query.state.data?.results.some(isProcessing) ? 3000 : false),
+  });
+}
+
+export function useVideoSummary() {
+  return useQuery({
+    queryKey: ["videos", "summary"],
+    queryFn: ({ signal }) => api<VideoSummary>("/videos/summary/", { signal }),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data && data.UPLOADED + data.PROCESSING > 0 ? 3000 : false;
+    },
+  });
+}
+
+export function useVideo(id: string) {
+  return useQuery({
+    queryKey: ["videos", "detail", id],
+    queryFn: ({ signal }) => api<VideoDetail>(`/videos/${id}/`, { signal }),
+    retry: false,
+    refetchInterval: (query) => (query.state.data && isProcessing(query.state.data) ? 3000 : false),
+  });
+}
+
+export function useUpdateVideo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; title: string; description: string }) =>
+      api<VideoDetail>(`/videos/${id}/`, { method: "PATCH", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["videos"] }),
+  });
+}
+
+export function useDeleteVideo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/videos/${id}/`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["videos"] }),
+  });
+}

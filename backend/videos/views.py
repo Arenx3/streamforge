@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from botocore.exceptions import BotoCoreError, ClientError
 from django.db import transaction
+from django.db.models import Count
 from django.http import HttpResponse
 from django.views.decorators.http import require_safe
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -29,6 +30,7 @@ from videos.serializers import (
     VideoDetailSerializer,
     VideoSerializer,
     VideoStatusSerializer,
+    VideoSummarySerializer,
     VideoUpdateSerializer,
 )
 from videos.tasks import delete_video_files, transcode_video
@@ -104,7 +106,7 @@ def playlist(request, token, rendition=None):
         summary="List your videos",
         parameters=[
             OpenApiParameter(
-                "status", str, enum=Video.Status.values, description="Only videos in this state"
+                "status", str, description="Only videos in these states, separated by commas"
             )
         ],
     ),
@@ -128,6 +130,10 @@ def playlist(request, token, rendition=None):
         summary="Finish an upload and start processing",
         request=None,
         responses=VideoSerializer,
+    ),
+    summary=extend_schema(
+        summary="Count your videos by state",
+        responses=VideoSummarySerializer,
     ),
     processing_status=extend_schema(
         summary="Get live processing progress",
@@ -156,9 +162,10 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         wanted = self.request.query_params.get("status")
         if self.action != "list" or wanted is None:
             return queryset
-        if wanted not in Video.Status.values:
+        statuses = wanted.split(",")
+        if not set(statuses) <= set(Video.Status.values):
             raise ValidationError({"status": [f"Must be one of: {', '.join(Video.Status.values)}"]})
-        return queryset.filter(status=wanted)
+        return queryset.filter(status__in=statuses)
 
     def partial_update(self, request, pk=None):
         video = self.get_object()
@@ -208,6 +215,12 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if video.status == Video.Status.UPLOADED:
             enqueue_transcode(video)
         return Response(VideoSerializer(video).data)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        rows = self.get_queryset().order_by().values_list("status").annotate(Count("pk"))
+        counts = dict(rows)
+        return Response({status: counts.get(status, 0) for status in Video.Status.values})
 
     @action(detail=True, methods=["get"], url_path="status", url_name="status")
     def processing_status(self, request, pk=None):
