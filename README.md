@@ -35,6 +35,7 @@ Plataforma full-stack de procesamiento y streaming adaptativo de video (HLS). Lo
 | `worker`     | `backend/Dockerfile.worker` | Celery con FFmpeg para transcodificación HLS              |
 | `beat`       | `backend/Dockerfile.worker` | Tareas periódicas (limpieza de subidas abandonadas)       |
 | `accounts-worker` | `backend/Dockerfile.worker` | Correos y limpieza de cuentas, en su propia cola |
+| `events`     | `backend/Dockerfile`        | Progreso en vivo (SSE), separado de los workers de la API |
 | `mailpit`    | `axllent/mailpit`           | Bandeja local: atrapa los correos de desarrollo           |
 | `postgres`   | `postgres:16-alpine`        | Base de datos                                             |
 | `redis`      | `redis:7-alpine`            | Broker y result backend de Celery                         |
@@ -160,6 +161,7 @@ Al completar la subida, el worker convierte el original a HLS:
 - **Thumbnail:** un frame representativo cerca del 10 % del video, en WebP de hasta 1280 px, en `videos/<id>/thumbnail.webp`. Si no se puede generar, el video queda listo igual.
 - **Seguridad:** solo se aceptan contenedores de video reales. FFmpeg no puede leer archivos locales ni la red aunque el archivo lo intente, y se eliminan los metadatos del original (como la ubicación GPS).
 - **Progreso:** `GET /api/videos/{id}/status/` devuelve `status`, `progress` (0 a 100) y `error_message`. El avance en vivo vive en Redis y PostgreSQL solo se actualiza cada 5 %.
+- **En vivo:** `GET /api/videos/events/` envía los cambios de tus videos por Server-Sent Events, desde un servicio propio para que las conexiones largas no ocupen los workers de la API.
 - **Límites:** duración máxima con `VIDEO_MAX_DURATION_SECONDS` y tiempo de proceso con `VIDEO_TRANSCODE_MAX_SECONDS`.
 
 ## API de videos
