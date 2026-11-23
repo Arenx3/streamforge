@@ -29,7 +29,9 @@ else
 fi
 
 # Browsers upload to and play from the bucket directly, so it must accept their origin.
-origins=$(printf '%s' "${CORS_ALLOWED_ORIGINS:-}" | tr -d ' \r' | sed 's/,/","/g')
+origins=$(printf '%s,%s' "${CORS_ALLOWED_ORIGINS:-}" "${APP_ORIGINS:-}" \
+  | tr -d ' \r' | tr ',' '\n' | sed 's/:80$//' | grep -v '^$' | sort -u | paste -sd, - \
+  | sed 's/,/","/g')
 if [ -n "$origins" ]; then
   s3api put-bucket-cors --bucket "$AWS_STORAGE_BUCKET_NAME" --cors-configuration \
     "{\"CORSRules\":[{\"AllowedOrigins\":[\"$origins\"],\"AllowedMethods\":[\"GET\",\"HEAD\",\"PUT\"],\"AllowedHeaders\":[\"*\"],\"MaxAgeSeconds\":3600}]}"
