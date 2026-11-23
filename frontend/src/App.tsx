@@ -13,6 +13,7 @@ import {
   ResetPasswordPage,
   VerifyEmailPage,
 } from "./features/auth/pages";
+import { UploadDock, UploadPage, UploadWatcher } from "./features/upload/UploadPage";
 import { LibraryPage } from "./features/videos/LibraryPage";
 import { NotFound } from "./pages/NotFound";
 
@@ -25,6 +26,8 @@ function AppLayout() {
     <AppShell account={<AccountMenu />}>
       <UnverifiedBanner />
       <Outlet />
+      <UploadWatcher />
+      <UploadDock />
     </AppShell>
   );
 }
@@ -45,7 +48,7 @@ export function App() {
             <Route element={<RequireAuth />}>
               <Route element={<AppLayout />}>
                 <Route index element={<LibraryPage />} />
-                <Route path="upload" element={<LibraryPage />} />
+                <Route path="upload" element={<UploadPage />} />
                 <Route path="videos/:id" element={<LibraryPage />} />
               </Route>
             </Route>
