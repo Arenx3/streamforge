@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, RotateCcw, UploadCloud, X } from "lucide-react";
+import { RotateCcw, UploadCloud, X } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useLocation } from "react-router";
 import { toast } from "sonner";
@@ -8,8 +8,20 @@ import { PageHeader } from "../../components/layout/AppShell";
 import { Button, buttonClass } from "../../components/ui/Button";
 import { Perforation, type PerforationTone } from "../../components/ui/Perforation";
 import { onSessionEnd } from "../../lib/api";
+import { translate } from "../../lib/errors";
 import { formatBytes, formatDuration } from "../../lib/format";
 import { useAuth, useConfig } from "../auth/AuthProvider";
+import { useVideo, type VideoDetail } from "../videos/api";
+import {
+  pendingStage,
+  serialOf,
+  STAGE_SHARE,
+  ticketStage,
+  videoJourney,
+  VideoTicket,
+  type StageState,
+  type TicketJourney,
+} from "../videos/VideoTicket";
 import {
   isActive,
   isPending,
@@ -23,80 +35,90 @@ import { ACCEPTED_FILES } from "./uploader";
 
 const FALLBACK_MAX_BYTES = 5 * 1024 ** 3;
 
-const STATUS_TEXT: Record<UploadStatus, string> = {
-  queued: "En espera",
-  uploading: "Subiendo",
-  finishing: "Uniendo partes",
-  done: "Subido",
-  failed: "Falló",
+const UPLOAD_STAGE: Record<
+  Exclude<UploadStatus, "done">,
+  { detail: (percent: number) => string; state: StageState; tone: PerforationTone }
+> = {
+  queued: { detail: () => "En espera", state: "queued", tone: "idle" },
+  uploading: { detail: (percent) => `${percent} %`, state: "active", tone: "live" },
+  finishing: { detail: () => "Uniendo", state: "active", tone: "live" },
+  failed: { detail: () => "Falló", state: "failed", tone: "failed" },
 };
 
-const TONES: Record<UploadStatus, PerforationTone> = {
-  queued: "idle",
-  uploading: "live",
-  finishing: "live",
-  done: "done",
-  failed: "failed",
-};
-
-function detailOf(item: UploadItem) {
-  if (item.status === "failed") return item.error;
-  if (item.status === "uploading" && item.bytesPerSecond > 0) {
-    const remaining = (item.file.size - item.loaded) / item.bytesPerSecond;
-    return `${formatBytes(item.bytesPerSecond)}/s · queda ${formatDuration(remaining)}`;
-  }
-  if (item.status === "done") return "Ya está en tu biblioteca";
-  return formatBytes(item.file.size);
+function journeyOf(item: UploadItem, video: VideoDetail | undefined): TicketJourney {
+  if (item.status === "done") return videoJourney(video ?? { status: "UPLOADED", progress: 0 });
+  const percent = percentOf(item);
+  const { detail, state, tone } = UPLOAD_STAGE[item.status];
+  const text = detail(Math.floor(percent));
+  return {
+    stages: [ticketStage("Subida", text, state), pendingStage("Proceso"), pendingStage("Función")],
+    percent: (percent / 100) * STAGE_SHARE,
+    tone,
+    spoken: `Subida: ${text}`,
+  };
 }
 
-function UploadRow({ item }: { item: UploadItem }) {
-  const percent = percentOf(item);
+function noteOf(item: UploadItem, video: VideoDetail | undefined) {
+  const size = formatBytes(item.file.size);
+  switch (item.status) {
+    case "failed":
+      return item.error;
+    case "queued":
+      return `En espera · ${size}`;
+    case "finishing":
+      return "Uniendo las partes en el almacenamiento";
+    case "uploading": {
+      if (item.bytesPerSecond <= 0) return `Subiendo ${size}`;
+      const remaining = (item.file.size - item.loaded) / item.bytesPerSecond;
+      return `${formatBytes(item.bytesPerSecond)}/s · queda ${formatDuration(remaining)}`;
+    }
+    case "done":
+      if (video?.status === "READY") return "Listo para reproducir";
+      if (video?.status === "FAILED") return translate(video.error_message);
+      if (video?.status === "PROCESSING") return "Convirtiendo a HLS";
+      return "En cola para procesarse";
+  }
+}
+
+function UploadTicket({ item }: { item: UploadItem }) {
+  const { data: video } = useVideo(item.videoId);
+  const failed = item.status === "failed" || video?.status === "FAILED";
   return (
-    <li className="border-line grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-dashed py-3.5">
-      <div className="min-w-0">
-        <p className="truncate font-medium">{item.title}</p>
-        <p className={`mt-0.5 truncate text-[13px] ${item.status === "failed" ? "text-danger" : "text-muted"}`}>
-          <span className={item.status === "failed" ? "" : "text-bone-soft"}>
-            {STATUS_TEXT[item.status]}
-          </span>
-          {" · "}
-          {detailOf(item)}
+    <li>
+      <VideoTicket
+        title={item.title}
+        serial={item.videoId ? serialOf(item.videoId) : undefined}
+        journey={journeyOf(item, video)}
+      >
+        <p className={`min-w-0 flex-1 basis-52 text-[13px] ${failed ? "text-danger" : "text-bone-soft"}`}>
+          {noteOf(item, video)}
         </p>
-      </div>
-      <div className="flex items-center gap-1">
-        {item.status === "done" && item.videoId && (
-          <Link to={`/videos/${item.videoId}`} className={buttonClass("secondary", "sm")}>
-            <CircleCheck aria-hidden className="text-ok size-3.5" />
-            Ver video
-          </Link>
-        )}
-        {item.status === "failed" && (
-          <Button variant="secondary" size="sm" onClick={() => uploads.retry(item.id)}>
-            <RotateCcw aria-hidden className="size-3.5" />
-            Reintentar
+        <div className="flex items-center gap-1">
+          {item.status === "done" && item.videoId && (
+            <Link
+              to={`/videos/${item.videoId}`}
+              className={buttonClass(video?.status === "READY" ? "primary" : "secondary", "sm")}
+            >
+              Ver video
+            </Link>
+          )}
+          {item.status === "failed" && (
+            <Button variant="secondary" size="sm" onClick={() => uploads.retry(item.id)}>
+              <RotateCcw aria-hidden className="size-3.5" />
+              Reintentar
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={isPending(item) ? `Cancelar ${item.title}` : `Quitar ${item.title}`}
+            title={isPending(item) ? "Cancelar" : "Quitar de la lista"}
+            onClick={() => (isPending(item) ? uploads.cancel(item.id) : uploads.dismiss(item.id))}
+          >
+            <X aria-hidden className="size-4" />
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={isPending(item) ? `Cancelar ${item.title}` : `Quitar ${item.title}`}
-          title={isPending(item) ? "Cancelar" : "Quitar de la lista"}
-          onClick={() => (isPending(item) ? uploads.cancel(item.id) : uploads.dismiss(item.id))}
-        >
-          <X aria-hidden className="size-4" />
-        </Button>
-      </div>
-      <div className="col-span-2 flex items-center gap-3">
-        <Perforation
-          value={percent}
-          tone={TONES[item.status]}
-          label={`Subida de ${item.title}`}
-          className="min-w-0 flex-1"
-        />
-        <span className="tabular text-bone-soft w-11 shrink-0 text-right text-[13px]">
-          {Math.floor(percent)} %
-        </span>
-      </div>
+        </div>
+      </VideoTicket>
     </li>
   );
 }
@@ -138,7 +160,7 @@ export function UploadPage() {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
         }}
         onDrop={onDrop}
-        className={`rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors duration-150 md:py-20 ${
+        className={`rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors md:py-20 ${
           dragging ? "border-brass bg-brass/10" : "border-line-strong bg-raised/40"
         } ${blocked ? "opacity-60" : ""}`}
       >
@@ -166,9 +188,9 @@ export function UploadPage() {
 
       {items.length > 0 && (
         <section aria-label="Subidas" className="mt-6">
-          <ul>
+          <ul className="space-y-4">
             {items.map((item) => (
-              <UploadRow key={item.id} item={item} />
+              <UploadTicket key={item.id} item={item} />
             ))}
           </ul>
         </section>
@@ -216,7 +238,7 @@ export function UploadDock() {
   return (
     <Link
       to="/upload"
-      className="bg-overlay border-line-strong shadow-float fixed right-4 bottom-4 left-4 z-40 block rounded-lg border p-3 md:right-auto md:left-[248px] md:w-[320px]"
+      className="bg-overlay border-line-strong shadow-float fixed right-4 bottom-4 left-4 z-40 block rounded-lg border p-3 md:right-auto md:left-[calc(var(--rail)+16px)] md:w-[320px]"
     >
       <span className="flex justify-between gap-3 text-[13px]">
         <span className="truncate font-medium">{current.title}</span>

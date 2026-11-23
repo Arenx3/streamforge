@@ -24,7 +24,8 @@ test.describe("demo and player", () => {
 
   test("works from the keyboard", async ({ page }) => {
     await page.getByRole("button", { name: "Reproducir" }).first().click();
-    await expect.poll(async () => (await playerState(page)).paused).toBe(false);
+    // Really playing: before the metadata loads there is no timeline to seek in.
+    await expect.poll(async () => (await playerState(page)).time).toBeGreaterThan(0.3);
     await page.getByRole("region", { name: /Reproductor/ }).focus();
 
     await page.keyboard.press("k");

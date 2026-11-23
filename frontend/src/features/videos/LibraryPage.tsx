@@ -12,7 +12,6 @@ import { formatBytes, formatDuration, formatQuality } from "../../lib/format";
 import {
   countFor,
   FILTERS,
-  isProcessing,
   PAGE_SIZE,
   useVideos,
   useVideoSummary,
@@ -48,7 +47,7 @@ function summaryText(summary: VideoSummary | undefined) {
 }
 
 function Progress({ video }: { video: Video }) {
-  const showPercent = isProcessing(video) || video.status === "FAILED";
+  const showPercent = video.status === "PROCESSING" || video.status === "FAILED";
   return (
     <span className="flex w-[190px] items-center gap-2.5 xl:w-[290px]">
       <Perforation
@@ -74,16 +73,16 @@ function VideoRow({
   onDelete: () => void;
 }) {
   return (
-    <tr className="group hover:bg-raised/70 transition-colors duration-150">
+    <tr className="group hover:bg-raised/70 transition-colors">
       <td className={`${cellClass} w-full max-w-0`}>
         <Link to={`/videos/${video.id}`} className="flex min-w-0 items-center gap-3 rounded">
           <Thumbnail url={video.thumbnail_url} className="h-10 w-[72px]" />
           <span className="min-w-0">
-            <span className="block truncate font-medium">{video.title}</span>
+            <span className="line-clamp-2 font-medium break-words md:line-clamp-1">{video.title}</span>
             <span className="mt-0.5 block text-[13px] md:hidden">
               <StatusMark status={video.status} />
             </span>
-            {isProcessing(video) && (
+            {video.status === "PROCESSING" && (
               <span className="mt-1.5 block lg:hidden">
                 <Progress video={video} />
               </span>
@@ -106,8 +105,8 @@ function VideoRow({
       <td className={`${cellClass} ${numberClass} hidden xl:table-cell`}>
         {formatBytes(video.size_bytes)}
       </td>
-      <td className={`${cellClass} w-px pr-1 whitespace-nowrap`}>
-        <span className="flex justify-end gap-0.5 transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100">
+      <td className={`${cellClass} hidden w-px pr-1 whitespace-nowrap md:table-cell`}>
+        <span className="flex justify-end gap-0.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100">
           <Button variant="ghost" size="icon" aria-label={`Editar ${video.title}`} onClick={onEdit}>
             <Pencil aria-hidden className="size-3.5" />
           </Button>
@@ -246,7 +245,7 @@ export function LibraryPage() {
               <th scope="col" className={`${headClass} hidden text-right sm:table-cell`}>Duración</th>
               <th scope="col" className={`${headClass} hidden text-right xl:table-cell`}>Calidad</th>
               <th scope="col" className={`${headClass} hidden text-right xl:table-cell`}>Tamaño</th>
-              <th scope="col" className={headClass}>
+              <th scope="col" className={`${headClass} hidden md:table-cell`}>
                 <span className="sr-only">Acciones</span>
               </th>
             </tr>

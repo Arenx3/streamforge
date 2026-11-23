@@ -5,6 +5,9 @@
 @theme {
   --color-*: initial;
   --color-transparent: transparent;
+  --color-black: #000;
+  --color-white: #fff;
+  --color-night: #0d0608;
   --color-ground: #170c10;
   --color-raised: #21121a;
   --color-overlay: #2c1821;
@@ -30,18 +33,26 @@
   --font-marquee: "League Gothic", "Arial Narrow", sans-serif;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --default-transition-duration: 180ms;
+  --default-transition-timing-function: var(--ease-out);
   --shadow-float: 0 12px 32px -8px rgb(8 2 4 / 0.7), 0 2px 6px rgb(8 2 4 / 0.4);
 }
 
 @property --progress {
   syntax: "<percentage>";
-  inherits: false;
+  inherits: true;
   initial-value: 0%;
 }
 
 @layer base {
+  :root {
+    /* The one movement of the interface. */
+    --motion: var(--default-transition-duration) var(--ease-out);
+  }
+
   html {
     background: var(--color-ground);
+    transition: background-color var(--motion);
     color: var(--color-bone);
     font-family: var(--font-sans);
     font-size: 16px;
@@ -92,29 +103,54 @@
 
 @utility press {
   transition:
-    transform 160ms var(--ease-out),
-    background-color 160ms var(--ease-out),
-    border-color 160ms var(--ease-out),
-    color 160ms var(--ease-out);
+    transform var(--motion),
+    background-color var(--motion),
+    border-color var(--motion),
+    color var(--motion);
 
   &:active:not(:disabled) {
     transform: scale(0.97);
   }
 }
 
-/* A ticket's punched line. One element: the fill is a gradient cut by a dot mask. */
+/* A ticket's punched line: whole dots, flush at both ends, filling one dot at a time.
+   Perforation.tsx stretches --pitch to the width of the line. */
 .perforation {
+  --pitch: 9px;
   --fill: var(--color-brass);
+  position: relative;
   display: block;
   width: 100%;
   height: 6px;
-  background: linear-gradient(
-    to right,
-    var(--fill) var(--progress),
-    var(--color-perf) var(--progress)
-  );
-  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / 9px 6px repeat-x;
-  transition: --progress 400ms var(--ease-out);
+  transition: --progress var(--motion);
+}
+
+.perforation::before,
+.perforation::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / var(--pitch) 6px
+    repeat-x;
+}
+
+.perforation::before {
+  width: 100%;
+  background: var(--color-perf);
+}
+
+.perforation::after {
+  /* A dot lights once the value has passed it; the edge rests in the gap after it. */
+  width: calc(round(down, calc(var(--progress) + var(--pitch) - 5.5px), var(--pitch)) - 1.5px);
+  max-width: 100%;
+  background: var(--fill);
+}
+
+@supports not (width: round(down, 1%, 1px)) {
+  .perforation::after {
+    width: var(--progress);
+  }
 }
 
 .perforation[data-tone="done"] {
@@ -129,51 +165,73 @@
   --fill: var(--color-line-strong);
 }
 
-@keyframes perforation-fill {
-  from {
-    --progress: 0%;
-  }
-  to {
-    --progress: 100%;
-  }
-}
-
-.perforation-intro {
-  animation: perforation-fill 1.8s var(--ease-out) 200ms both;
-}
-
-/* The notches where a ticket tears, cut from the panel behind it. */
+/* The ticket: its notches are cut at the tear line, showing whatever is behind it. */
 .ticket {
+  position: relative;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 12px;
   box-shadow: var(--shadow-float);
 }
 
-.ticket::before,
-.ticket::after {
+.ticket-tear {
+  position: relative;
+}
+
+.ticket-tear::before,
+.ticket-tear::after {
   content: "";
   position: absolute;
-  bottom: 23px;
-  width: 16px;
-  height: 16px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  border: 1px solid var(--color-line-strong);
   border-radius: 50%;
-  background: var(--color-rail);
+  background: var(--ticket-behind, var(--color-ground));
 }
 
-.ticket::before {
-  left: -8px;
+.ticket-tear::before {
+  left: -10px;
+  clip-path: inset(-1px -1px -1px 50%);
 }
 
-.ticket::after {
-  right: -8px;
+.ticket-tear::after {
+  right: -10px;
+  clip-path: inset(-1px 50% -1px -1px);
+}
+
+/* House lights: the room goes dark while a video plays. */
+.app-rail {
+  transition:
+    background-color var(--motion),
+    border-color var(--motion);
+}
+
+.app-rail > * {
+  transition: opacity var(--motion);
+}
+
+html[data-lights="down"] {
+  background: var(--color-night);
+}
+
+html[data-lights="down"] .app-rail {
+  background: var(--color-night);
+  border-color: var(--color-line);
+}
+
+html[data-lights="down"] .app-rail:not(:hover, :focus-within) > * {
+  opacity: 0.45;
 }
 
 .sf-dialog {
   &[open] {
-    animation: dialog-in 200ms var(--ease-out);
+    animation: dialog-in var(--motion);
   }
 
   &::backdrop {
     background: rgb(12 5 8 / 0.72);
-    animation: backdrop-in 200ms var(--ease-out);
+    animation: backdrop-in var(--motion);
   }
 }
 
@@ -193,7 +251,7 @@
 /* Video controls: the timeline is the same punched line as the progress meter. */
 .player-controls {
   background: linear-gradient(to top, rgb(10 4 6 / 0.88), transparent);
-  transition: opacity 180ms var(--ease-out);
+  transition: opacity var(--motion);
 }
 
 .player[data-controls="false"] .player-controls {
@@ -202,17 +260,44 @@
 }
 
 .player-track {
+  --pitch: 9px;
   position: absolute;
-  inset-inline: 0;
+  left: 0;
   top: 7px;
+  width: 100%;
   height: 6px;
-  background: linear-gradient(
-    to right,
-    var(--color-brass) var(--played),
-    rgb(255 255 255 / 0.55) var(--played) var(--buffered),
-    rgb(255 255 255 / 0.22) var(--buffered)
-  );
-  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / 9px 6px repeat-x;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.22);
+  mask: radial-gradient(circle at 3px 3px, #000 2.75px, transparent 3.25px) 0 0 / var(--pitch) 6px
+    repeat-x;
+}
+
+.player-track::before,
+.player-track::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+}
+
+.player-track::before {
+  width: calc(round(down, calc(var(--buffered) + var(--pitch) - 5.5px), var(--pitch)) - 1.5px);
+  background: rgb(255 255 255 / 0.55);
+}
+
+.player-track::after {
+  width: calc(round(down, calc(var(--played) + var(--pitch) - 5.5px), var(--pitch)) - 1.5px);
+  background: var(--color-brass);
+}
+
+@supports not (width: round(down, 1%, 1px)) {
+  .player-track::before {
+    width: var(--buffered);
+  }
+
+  .player-track::after {
+    width: var(--played);
+  }
 }
 
 .player-range,
@@ -302,7 +387,23 @@
 .skeleton {
   border-radius: 4px;
   background: var(--color-overlay);
-  animation: skeleton 1.4s ease-in-out infinite;
+  animation: skeleton 1.4s var(--ease-out) infinite;
+}
+
+/* Toasts move like the rest of the interface. Only what Sonner already transitions. */
+[data-sonner-toaster],
+[data-sonner-toast],
+[data-sonner-toast] > *,
+[data-sonner-toast] [data-button],
+[data-sonner-toast] [data-close-button],
+.sonner-loader {
+  transition-duration: var(--default-transition-duration) !important;
+  transition-timing-function: var(--ease-out) !important;
+}
+
+[data-sonner-toast][data-swipe-out="true"] {
+  animation-duration: var(--default-transition-duration) !important;
+  animation-timing-function: var(--ease-out) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
