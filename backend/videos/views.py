@@ -16,6 +16,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsEmailVerified
 from core.storage import STORAGE_ERRORS
+from videos.events import publish_video_deleted
 from videos.models import InvalidTransition, Video
 from videos.playback import (
     PlaylistNotFound,
@@ -176,12 +177,13 @@ class VideoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
     def destroy(self, request, pk=None):
         video = self.get_object()
-        video_id, upload_id = str(video.pk), video.upload_id
+        video_id, upload_id, owner_id = str(video.pk), video.upload_id, video.owner_id
         try:
             # The row only goes away once its file cleanup is safely queued.
             with transaction.atomic():
                 video.delete()
                 delete_video_files.delay(video_id, upload_id=upload_id)
+                transaction.on_commit(lambda: publish_video_deleted(owner_id, video_id))
         except BrokerError as exc:
             logger.exception("Could not queue the deletion of video %s", video_id)
             raise ProcessingUnavailable("The video could not be deleted. Try again.") from exc
