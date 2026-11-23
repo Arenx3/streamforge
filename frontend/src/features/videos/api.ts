@@ -1,9 +1,11 @@
 import {
   keepPreviousData,
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useMatch } from "react-router";
 
 import { api } from "../../lib/api";
 import { useLiveConnection } from "./liveEvents";
@@ -83,15 +85,28 @@ export function useVideoSummary() {
   });
 }
 
-export function useVideo(id: string) {
-  const live = useLiveConnection();
-  return useQuery({
+const videoQuery = (id: string | undefined, live: boolean) =>
+  queryOptions({
     queryKey: ["videos", "detail", id],
     queryFn: ({ signal }) => api<VideoDetail>(`/videos/${id}/`, { signal }),
+    enabled: Boolean(id),
     retry: false,
     refetchInterval: (query) =>
       !live && query.state.data && isProcessing(query.state.data) ? POLL_MS : false,
   });
+
+export function useVideo(id: string | undefined) {
+  return useQuery(videoQuery(id, useLiveConnection()));
+}
+
+/** Whether the page on screen is a video's player. */
+export function useShowsPlayer() {
+  const id = useMatch("/videos/:id")?.params.id;
+  const { data = false } = useQuery({
+    ...videoQuery(id, useLiveConnection()),
+    select: (video) => video.status === "READY" && Boolean(video.playback_url),
+  });
+  return data;
 }
 
 export function useUpdateVideo() {

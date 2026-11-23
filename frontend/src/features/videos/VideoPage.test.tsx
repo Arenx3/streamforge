@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endSession, startSession } from "../../lib/api";
 import type * as PlayerModule from "../player/VideoPlayer";
 import { qualityOptions } from "../player/VideoPlayer";
-import type { VideoDetail } from "./api";
+import { useShowsPlayer, type VideoDetail } from "./api";
 import { VideoPage } from "./VideoPage";
 
 vi.mock("../player/VideoPlayer", async (importOriginal) => ({
@@ -37,11 +37,16 @@ const detail = (overrides: Partial<VideoDetail>): VideoDetail => ({
   ...overrides,
 });
 
+function Rail() {
+  return <output data-testid="rail">{useShowsPlayer() ? "compact" : "full"}</output>;
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/videos/v1"]}>
+        <Rail />
         <Routes>
           <Route path="/videos/:id" element={<VideoPage />} />
         </Routes>
@@ -80,7 +85,7 @@ describe("VideoPage", () => {
     renderPage();
 
     expect(await screen.findByText("47 %")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "47");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "Proceso: 47 %");
     expect(screen.queryByTestId("player")).not.toBeInTheDocument();
   });
 
@@ -99,6 +104,7 @@ describe("VideoPage", () => {
     renderPage();
 
     expect(await screen.findByText("El archivo no es un video compatible.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Subir de nuevo" })).toHaveAttribute("href", "/upload");
   });
 
   it("handles a video that does not exist", async () => {
@@ -106,6 +112,20 @@ describe("VideoPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Este video no existe" })).toBeInTheDocument();
+    expect(screen.getByTestId("rail")).toHaveTextContent("full");
+  });
+
+  it.each([
+    ["READY", "compact"],
+    ["PROCESSING", "full"],
+    ["FAILED", "full"],
+  ] as const)("sizes the rail for a %s video", async (status, rail) => {
+    const playback_url = status === "READY" ? detail({}).playback_url : null;
+    fetchMock.mockResolvedValue(json(200, detail({ status, playback_url })));
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Demo de producto" });
+    expect(screen.getByTestId("rail")).toHaveTextContent(rail);
   });
 });
 
