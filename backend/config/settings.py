@@ -124,6 +124,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# --- HTTPS: off by default because the local stack runs on plain HTTP ---
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT")
+# Containers check their own health over HTTP, from inside the network.
+SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+SECURE_HSTS_SECONDS = int(env("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS")
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD")
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE")
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE")
+
 # --- Redis / Celery ---
 REDIS_URL = env("REDIS_URL", "redis://redis:6379/0")
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", REDIS_URL)
