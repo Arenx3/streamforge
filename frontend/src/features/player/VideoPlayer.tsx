@@ -226,7 +226,8 @@ export function VideoPlayer({ url, poster, title, getFreshUrl }: Props) {
 
   const chooseLevel = (level: number) => {
     setSelectedLevel(level);
-    if (hlsRef.current) hlsRef.current.currentLevel = level;
+    // At the next segment: switching right away empties the buffer and freezes the picture.
+    if (hlsRef.current) hlsRef.current.nextLevel = level;
   };
 
   const retry = () => {
