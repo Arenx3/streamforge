@@ -18,6 +18,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.tasks import delete_unverified_accounts, send_verification_email
+from accounts.testing import post_with_refresh, session_of
 from accounts.tests import EMAIL, PASSWORD, AuthTestCase
 from accounts.tokens import RESET_PASSWORD, VERIFY_EMAIL, make_token, read_token
 from videos.models import Video
@@ -341,8 +342,8 @@ class PasswordResetTests(EmailTestCase):
         self.assertEqual(self.confirm_reset(token).status_code, status.HTTP_204_NO_CONTENT)
 
     def test_closes_every_session(self):
-        session = self.login().data
-        rotated = self.client.post(self.refresh_url, {"refresh": session["refresh"]}).data
+        session = session_of(self.login())
+        rotated = session_of(post_with_refresh(self.client, self.refresh_url, session["refresh"]))
 
         self.confirm_reset(self.reset_token())
 
@@ -350,7 +351,7 @@ class PasswordResetTests(EmailTestCase):
         self.assertEqual(self.client.get(self.me_url).status_code, status.HTTP_401_UNAUTHORIZED)
         self.client.credentials()
         for refresh in (session["refresh"], rotated["refresh"]):
-            response = self.client.post(self.refresh_url, {"refresh": refresh})
+            response = post_with_refresh(self.client, self.refresh_url, refresh)
 
             self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -379,7 +380,7 @@ class AccountPreHijackingTests(EmailTestCase):
         super().setUp()
         self.register(email="victim@example.com", password=PASSWORD)
         self.victim_link = link_token(mail.outbox[0])
-        self.attacker = self.login("victim@example.com").data
+        self.attacker = session_of(self.login("victim@example.com"))
         self.account = User.objects.get(email="victim@example.com")
 
     def test_victim_cannot_confirm_without_the_attackers_password(self):
@@ -401,7 +402,7 @@ class AccountPreHijackingTests(EmailTestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.attacker['access']}")
         self.assertEqual(self.client.get(self.me_url).status_code, status.HTTP_401_UNAUTHORIZED)
         self.client.credentials()
-        response = self.client.post(self.refresh_url, {"refresh": self.attacker["refresh"]})
+        response = post_with_refresh(self.client, self.refresh_url, self.attacker["refresh"])
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(
             self.login("victim@example.com", PASSWORD).status_code, status.HTTP_401_UNAUTHORIZED

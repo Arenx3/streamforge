@@ -15,6 +15,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
+from accounts.session import REFRESH_COOKIE
+from accounts.testing import post_with_refresh, session_of
 from config.celery import app as celery_app
 
 User = get_user_model()
@@ -136,7 +138,7 @@ class RegisterTests(AuthTestCase):
 
 
 class LoginTests(AuthTestCase):
-    def test_returns_access_and_refresh_tokens(self):
+    def test_returns_the_access_token(self):
         user = self.make_user()
 
         response = self.login()
@@ -145,7 +147,26 @@ class LoginTests(AuthTestCase):
         access = AccessToken(response.data["access"])
         self.assertEqual(access["user_id"], str(user.id))
         self.assertEqual(access["exp"] - access["iat"], timedelta(minutes=15).total_seconds())
-        self.assertIn("refresh", response.data)
+
+    def test_keeps_the_refresh_token_out_of_reach_of_scripts(self):
+        self.make_user()
+
+        response = self.login()
+
+        self.assertNotIn("refresh", response.data)
+        cookie = response.cookies[REFRESH_COOKIE]
+        RefreshToken(cookie.value)
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], "Strict")
+        self.assertEqual(cookie["path"], "/api/auth/")
+        self.assertEqual(cookie["max-age"], int(timedelta(days=7).total_seconds()))
+        self.assertFalse(cookie["secure"])
+
+    @override_settings(SESSION_COOKIE_SECURE=True)
+    def test_the_cookie_is_secure_in_production(self):
+        self.make_user()
+
+        self.assertTrue(self.login().cookies[REFRESH_COOKIE]["secure"])
 
     def test_email_is_case_insensitive(self):
         self.make_user()
@@ -171,28 +192,47 @@ class LoginTests(AuthTestCase):
 
 class RefreshTests(AuthTestCase):
     def refresh(self, token):
-        return self.client.post(self.refresh_url, {"refresh": token}, format="json")
+        return post_with_refresh(self.client, self.refresh_url, token)
 
     def test_returns_new_access_and_rotated_refresh(self):
         self.make_user()
-        original = self.login().data["refresh"]
+        original = session_of(self.login())["refresh"]
 
         response = self.refresh(original)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access", response.data)
-        self.assertNotEqual(response.data["refresh"], original)
+        self.assertNotIn("refresh", response.data)
+        self.assertNotEqual(response.cookies[REFRESH_COOKIE].value, original)
 
     def test_rotated_token_cannot_be_reused(self):
         self.make_user()
-        original = self.login().data["refresh"]
-        rotated = self.refresh(original).data["refresh"]
+        original = session_of(self.login())["refresh"]
+        rotated = self.refresh(original).cookies[REFRESH_COOKIE].value
 
         self.assertEqual(self.refresh(original).status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self.refresh(rotated).status_code, status.HTTP_200_OK)
 
-    def test_invalid_token_is_rejected(self):
-        self.assertEqual(self.refresh("not-a-token").status_code, status.HTTP_401_UNAUTHORIZED)
+    def test_invalid_token_is_rejected_and_its_cookie_dropped(self):
+        response = self.refresh("not-a-token")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.cookies[REFRESH_COOKIE].value, "")
+        self.assertEqual(response.cookies[REFRESH_COOKIE]["max-age"], 0)
+
+    def test_without_a_cookie_there_is_no_session(self):
+        response = self.client.post(self.refresh_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_a_token_in_the_body_is_ignored(self):
+        self.make_user()
+        token = session_of(self.login())["refresh"]
+        self.client.cookies.clear()
+
+        response = self.client.post(self.refresh_url, {"refresh": token}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_access_token_cannot_refresh(self):
         self.make_user()
@@ -202,7 +242,7 @@ class RefreshTests(AuthTestCase):
 
     def test_deactivated_user_cannot_refresh(self):
         user = self.make_user()
-        token = self.login().data["refresh"]
+        token = session_of(self.login())["refresh"]
         User.objects.filter(pk=user.pk).update(is_active=False)
 
         self.assertEqual(self.refresh(token).status_code, status.HTTP_401_UNAUTHORIZED)
