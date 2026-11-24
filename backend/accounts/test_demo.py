@@ -15,6 +15,8 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.demo import DEMO_EMAIL, ensure_demo_video, get_demo_user
+from accounts.session import REFRESH_COOKIE
+from accounts.testing import post_with_refresh
 from accounts.tests import PASSWORD
 from videos.demo import SAMPLE_TITLE, build_sample_command
 from videos.models import Video
@@ -42,6 +44,14 @@ class DemoLoginTests(APITestCase):
         me = self.client.get(reverse("auth-me"))
         self.assertEqual(me.data["email"], DEMO_EMAIL)
         self.assertTrue(me.data["email_verified"])
+
+    def test_keeps_the_refresh_token_in_a_cookie(self):
+        response = self.client.post(self.url)
+
+        self.assertNotIn("refresh", response.data)
+        self.assertTrue(response.cookies[REFRESH_COOKIE]["httponly"])
+        renewed = self.client.post(reverse("auth-token-refresh"))
+        self.assertEqual(renewed.status_code, status.HTTP_200_OK)
 
     def test_account_has_no_usable_password(self):
         self.client.post(self.url)
@@ -90,11 +100,22 @@ class LogoutTests(APITestCase):
         user = User.objects.create_user(email="ana@example.com", password=PASSWORD)
         refresh = str(RefreshToken.for_user(user))
 
-        response = self.client.post(reverse("auth-logout"), {"refresh": refresh}, format="json")
+        response = post_with_refresh(self.client, reverse("auth-logout"), refresh)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        again = self.client.post(reverse("auth-token-refresh"), {"refresh": refresh}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(response.cookies[REFRESH_COOKIE].value, "")
+        again = post_with_refresh(self.client, reverse("auth-token-refresh"), refresh)
         self.assertEqual(again.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_succeeds_without_a_session(self):
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_survives_a_forged_token(self):
+        response = post_with_refresh(self.client, reverse("auth-logout"), "forged")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
 class PublicConfigTests(APITestCase):

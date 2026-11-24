@@ -1,9 +1,15 @@
-export type Tokens = { access: string; refresh?: string };
+/** The refresh token never reaches the page: the API keeps it in an httpOnly cookie. */
+export type Tokens = { access: string };
 
-const REFRESH_KEY = "streamforge.refresh";
+// Only says that this browser holds a session, so tabs can tell each other when it ends.
+const SESSION_KEY = "streamforge.session";
+// Earlier versions kept the refresh token itself in storage.
+const LEGACY_REFRESH_KEY = "streamforge.refresh";
 const EXPIRY_MARGIN_MS = 20_000;
 
 let accessToken: string | null = null;
+// Without storage the session still works until the page closes.
+let sessionInPage = false;
 let pendingRefresh: Promise<string | null> | null = null;
 const endListeners = new Set<() => void>();
 
@@ -18,41 +24,43 @@ export class ApiError extends Error {
   }
 }
 
-function readRefresh(): string | null {
+function readFlag() {
   try {
-    return localStorage.getItem(REFRESH_KEY);
+    return localStorage.getItem(SESSION_KEY) === "1";
   } catch {
-    return null;
+    return false;
   }
 }
 
-function writeRefresh(token: string | null) {
+function writeFlag(signedIn: boolean) {
   try {
-    if (token) localStorage.setItem(REFRESH_KEY, token);
-    else localStorage.removeItem(REFRESH_KEY);
+    if (signedIn) localStorage.setItem(SESSION_KEY, "1");
+    else localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
   } catch {
-    // Without storage the session simply lasts until the page closes.
+    // No storage: the session lasts until the page closes.
   }
 }
 
-export const hasSession = () => accessToken !== null || readRefresh() !== null;
-export const getRefreshToken = readRefresh;
+export const hasSession = () => accessToken !== null || sessionInPage || readFlag();
 
 export function startSession(tokens: Tokens) {
   accessToken = tokens.access;
-  if (tokens.refresh) writeRefresh(tokens.refresh);
+  sessionInPage = true;
+  writeFlag(true);
 }
 
 export function endSession() {
   accessToken = null;
-  writeRefresh(null);
+  sessionInPage = false;
+  writeFlag(false);
   endListeners.forEach((listener) => listener());
 }
 
 export function onSessionEnd(listener: () => void) {
   endListeners.add(listener);
   const onStorage = (event: StorageEvent) => {
-    if (event.key === REFRESH_KEY && event.newValue === null) {
+    if (event.key === SESSION_KEY && event.newValue === null) {
       accessToken = null;
       listener();
     }
@@ -75,12 +83,11 @@ function isFresh(token: string) {
 }
 
 async function rotate(): Promise<string | null> {
-  const refresh = readRefresh();
-  if (!refresh) return null;
+  if (!hasSession()) return null;
+  // The browser sends the refresh cookie, and the answer replaces it.
   const response = await fetch("/api/auth/token/refresh/", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh }),
+    credentials: "same-origin",
   });
   if (response.ok) {
     const tokens = (await response.json()) as Tokens;
@@ -132,7 +139,7 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
     });
 
   let response = await send(auth ? await freshAccessToken() : null);
-  if (auth && response.status === 401 && readRefresh()) {
+  if (auth && response.status === 401 && hasSession()) {
     accessToken = null;
     const token = await refreshAccess();
     if (token) response = await send(token);

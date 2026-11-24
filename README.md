@@ -129,13 +129,16 @@ La API usa JWT. Todo endpoint nuevo es privado por defecto (`IsAuthenticated`).
 | Método | Ruta                       | Qué hace                                                  |
 |--------|----------------------------|-----------------------------------------------------------|
 | POST   | `/api/auth/register/`      | Crea una cuenta sin verificar y envía el correo           |
-| POST   | `/api/auth/token/`         | Login con email: `access` (15 min) y `refresh` (7 días)   |
-| POST   | `/api/auth/token/refresh/` | Devuelve un par nuevo e invalida el `refresh` usado       |
+| POST   | `/api/auth/token/`         | Login con email: devuelve `access` (15 min) y deja el refresh (7 días) en una cookie |
+| POST   | `/api/auth/token/refresh/` | Rota la cookie de refresh y devuelve un `access` nuevo    |
+| POST   | `/api/auth/logout/`        | Revoca el refresh de la cookie y la borra                 |
 | GET    | `/api/auth/me/`            | Usuario actual (`Authorization: Bearer <access>`)         |
 | POST   | `/api/auth/email/verify/`  | Confirma el correo con `token` (requiere sesión)          |
 | POST   | `/api/auth/email/resend/`  | Reenvía el correo de verificación                         |
 | POST   | `/api/auth/password/reset/` | Envía el enlace de recuperación a `email`                |
 | POST   | `/api/auth/password/reset/confirm/` | Cambia la contraseña con `token` y `password`    |
+
+El refresh token nunca llega al JavaScript de la página: viaja en una cookie `HttpOnly` y `SameSite=Strict`, limitada a `/api/auth/` y `Secure` en producción. El access token vive solo en memoria. Desde la terminal, guarda la cookie con `curl -c cookies.txt` y envíala con `-b cookies.txt`.
 
 Las cuentas se identifican por email, sin distinguir mayúsculas. Login y registro tienen rate limit por IP (`THROTTLE_RATE_LOGIN`, `THROTTLE_RATE_REGISTER`).
 

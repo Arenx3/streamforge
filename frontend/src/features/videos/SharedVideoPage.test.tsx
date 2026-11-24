@@ -66,7 +66,7 @@ describe("SharedVideoPage", () => {
   });
 
   it("never sends the session of whoever opens it", async () => {
-    startSession({ access: "h.e30.s", refresh: "r1" });
+    startSession({ access: "h.e30.s" });
     fetchMock.mockImplementation(async () => json(200, shared));
     renderPage();
 

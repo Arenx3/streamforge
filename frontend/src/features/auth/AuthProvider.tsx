@@ -12,7 +12,6 @@ import {
 import {
   api,
   endSession,
-  getRefreshToken,
   hasSession,
   onSessionEnd,
   startSession,
@@ -85,13 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [enter]);
 
   const logout = useCallback(async () => {
-    const refresh = getRefreshToken();
     endSession();
-    if (refresh) {
-      await api("/auth/logout/", { method: "POST", body: { refresh }, auth: false }).catch(
-        () => undefined,
-      );
-    }
+    // Revokes the refresh token the cookie carries and deletes the cookie.
+    await api("/auth/logout/", { method: "POST", auth: false }).catch(() => undefined);
   }, []);
 
   const refetch = me.refetch;

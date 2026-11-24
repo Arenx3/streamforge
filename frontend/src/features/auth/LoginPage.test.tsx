@@ -34,7 +34,7 @@ function renderLogin() {
 describe("LoginPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
-  const route = (demoEnabled: boolean, login = json(200, { access, refresh: "r1" })) =>
+  const route = (demoEnabled: boolean, login = json(200, { access })) =>
     fetchMock.mockImplementation(async (url) => {
       if (url === "/api/config/") {
         return json(200, { demo_enabled: demoEnabled, mailbox_url: "", max_upload_bytes: 1 });

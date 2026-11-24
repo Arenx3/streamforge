@@ -24,9 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class TokenPairSerializer(serializers.Serializer):
+class AccessTokenSerializer(serializers.Serializer):
+    # The refresh token never travels in a body: it lives in an httpOnly cookie.
     access = serializers.CharField(read_only=True)
-    refresh = serializers.CharField(read_only=True)
 
 
 class DetailSerializer(serializers.Serializer):
