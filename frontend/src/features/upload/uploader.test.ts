@@ -99,7 +99,7 @@ describe("uploadVideo", () => {
       if (init?.method === "DELETE") return new Response(null, { status: 204 });
       return json(200, { id: "v1", status: "UPLOADED" });
     });
-    startSession({ access, refresh: "r1" });
+    startSession({ access });
   });
 
   afterEach(() => {

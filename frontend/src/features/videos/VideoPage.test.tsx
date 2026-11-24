@@ -62,7 +62,7 @@ describe("VideoPage", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
-    startSession({ access, refresh: "r1" });
+    startSession({ access });
   });
 
   afterEach(() => {
