@@ -1,4 +1,22 @@
+import type { Page } from "@playwright/test";
+
 import { enterDemo, expect, playerState, SAMPLE, test, videoRow, waitForReady } from "./helpers";
+
+/** From now on, records the longest wait between two frames shown on screen. */
+const watchFrames = (page: Page) =>
+  page.evaluate(() => {
+    const video = document.querySelector("video")!;
+    video.dataset.longestGap = "0";
+    let last = 0;
+    const onFrame = (now: number) => {
+      if (last) video.dataset.longestGap = String(Math.max(Number(video.dataset.longestGap), now - last));
+      last = now;
+      video.requestVideoFrameCallback(onFrame);
+    };
+    video.requestVideoFrameCallback(onFrame);
+  });
+const longestFrameGap = (page: Page) =>
+  page.evaluate(() => Number(document.querySelector("video")!.dataset.longestGap));
 
 test.describe("demo and player", () => {
   test.beforeEach(async ({ page }) => {
@@ -8,19 +26,25 @@ test.describe("demo and player", () => {
     await expect(page.getByRole("region", { name: /Reproductor/ })).toBeVisible();
   });
 
-  test("plays the processed sample and switches quality", async ({ page }) => {
-    await page.getByRole("button", { name: "Reproducir" }).first().click();
-    await expect.poll(async () => (await playerState(page)).time).toBeGreaterThan(0.5);
+  // The new quality starts at the next segment, as it does on large video sites.
+  for (const [label, width] of [
+    ["360p", 640],
+    ["1080p", 1920],
+  ] as const) {
+    test(`switches to ${label} without stopping`, async ({ page }) => {
+      await page.getByRole("button", { name: "Reproducir" }).first().click();
+      await expect.poll(async () => (await playerState(page)).time).toBeGreaterThan(0.5);
+      const quality = page.getByRole("combobox", { name: "Calidad" });
+      await expect(quality.locator("option")).toHaveText([/^Auto/, "1080p", "720p", "360p"]);
+      await watchFrames(page);
 
-    const quality = page.getByRole("combobox", { name: "Calidad" });
-    await expect(quality.locator("option")).toHaveText([/^Auto/, "1080p", "720p", "360p"]);
+      await quality.selectOption({ label });
 
-    await quality.selectOption({ label: "360p" });
-    await expect.poll(async () => (await playerState(page)).width).toBe(640);
-
-    await quality.selectOption({ label: "1080p" });
-    await expect.poll(async () => (await playerState(page)).width).toBe(1920);
-  });
+      await expect.poll(async () => (await playerState(page)).width, { timeout: 15_000 }).toBe(width);
+      // A frame lasts about 40 ms. Switching by emptying the buffer froze the picture for seconds.
+      expect(await longestFrameGap(page)).toBeLessThan(500);
+    });
+  }
 
   test("works from the keyboard", async ({ page }) => {
     await page.getByRole("button", { name: "Reproducir" }).first().click();
